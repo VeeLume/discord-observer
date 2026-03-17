@@ -3,6 +3,7 @@ use anyhow::Result;
 use crate::repos::MembershipRow;
 use crate::state::Ctx;
 
+pub mod botstats;
 pub mod member;
 pub mod notice;
 pub mod register;

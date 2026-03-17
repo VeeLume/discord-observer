@@ -4,7 +4,7 @@ use serenity::all::{ClientBuilder, GatewayIntents};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use crate::commands::{member, notice, register, settings, stats, userinfo};
+use crate::commands::{botstats, member, notice, register, settings, stats, userinfo};
 use crate::events::event_handler;
 use crate::state::AppState;
 
@@ -42,6 +42,7 @@ pub async fn run() -> Result<()> {
                 notice::notice(),
                 member::member(),
                 stats::stats(),
+                botstats::botstats(),
             ],
             event_handler: |ctx, event, framework, data| {
                 Box::pin(event_handler(ctx, event, framework, data))

@@ -1,6 +1,7 @@
 use anyhow::Result;
 use poise::serenity_prelude as serenity;
 
+use crate::permissions;
 use crate::repos::{GuildNoticesRepo, GuildSettings, GuildSettingsRepo};
 use crate::state::Ctx;
 
@@ -17,7 +18,8 @@ use crate::state::Ctx;
         "settings_mod_log",
         "settings_notices",
         "settings_notices_history",
-        "settings_show"
+        "settings_show",
+        "settings_features"
     )
 )]
 pub async fn settings(_: Ctx<'_>) -> Result<()> {
@@ -227,5 +229,51 @@ pub async fn settings_notices_history(ctx: Ctx<'_>) -> Result<()> {
         .description(lines.join("\n"));
 
     ctx.send(poise::CreateReply::default().embed(embed)).await?;
+    Ok(())
+}
+
+/// Show which bot features are available based on current permissions.
+#[poise::command(slash_command, guild_only, ephemeral, rename = "features")]
+pub async fn settings_features(ctx: Ctx<'_>) -> Result<()> {
+    let guild_id = ctx.guild_id().expect("guild_only");
+    let bot_id = ctx.framework().bot_id;
+
+    let perms = match permissions::bot_permissions_cached(ctx.serenity_context(), guild_id, bot_id)
+    {
+        Some(p) => p,
+        None => {
+            ctx.say("Could not determine bot permissions (guild not cached).")
+                .await?;
+            return Ok(());
+        }
+    };
+
+    let features = permissions::check_features(perms);
+    let mut embeds = Vec::with_capacity(features.len());
+
+    for f in &features {
+        let color = if f.available { 0x2ecc71 } else { 0xe74c3c };
+        let perm_lines: Vec<String> = f
+            .permissions
+            .iter()
+            .map(|p| {
+                let icon = if p.granted { "\u{2705}" } else { "\u{274c}" };
+                format!("{icon} {}", p.label)
+            })
+            .collect();
+
+        embeds.push(
+            serenity::CreateEmbed::new()
+                .color(color)
+                .title(f.name)
+                .description(format!("{}\n\n{}", f.description, perm_lines.join("\n"))),
+        );
+    }
+
+    let reply = poise::CreateReply {
+        embeds,
+        ..Default::default()
+    };
+    ctx.send(reply).await?;
     Ok(())
 }

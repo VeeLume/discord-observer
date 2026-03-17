@@ -4,6 +4,7 @@ mod db;
 mod events;
 mod invites;
 mod notices;
+mod permissions;
 mod repos;
 mod state;
 
