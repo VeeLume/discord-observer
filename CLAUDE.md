@@ -32,11 +32,11 @@ Discord Gateway Events
 
 | File | Role |
 |------|------|
-| `src/app.rs` | Framework setup, intents, prefix config. No command registration on startup — uses `~register` prefix command instead. |
+| `src/app.rs` | Framework setup, intents, prefix config. No command registration on startup — uses `@bot register` prefix command instead. |
 | `src/events.rs` | All gateway event handlers. Uses `ms_since(boot)` timestamps for timing analysis. |
 | `src/state.rs` | `AppState` struct: DB handle, `boot` instant, `invite_cache` (DashMap of TrackedInvite), `recent_bans`. Detection logic lives here. |
 | `src/invites.rs` | `InviteSnapshot` (uses, max_uses, inviter) and `TrackedInvite` (adds created_at, deleted_at lifecycle timestamps). |
-| `src/notices.rs` | One-time notice system. `NOTICES` const array of `NoticeDefinition` with `check` function pointers. Gated on `notices_enabled` guild setting. |
+| `src/notices.rs` | DB-driven notice system. Reads notice definitions from the `notices` table, respects `current_only` flag and `first_seen_at` per guild. Gated on `notices_enabled` guild setting. |
 
 ### Invite Detection
 
@@ -90,20 +90,20 @@ Repos take `&Db` and are created per-call: `let repo = MembershipsRepo::new(&sta
 
 Slash commands use poise 0.6. Parent commands have `subcommands(...)` and empty bodies. Each subcommand is a separate function with `rename = "discord-name"`.
 
-The `~register` prefix command (owner-only) uses `poise::builtins::register_application_commands_buttons` to interactively register or delete commands globally or per-guild.
+The `@bot register` prefix command (owner-only) uses `poise::builtins::register_application_commands_buttons` to interactively register or delete commands globally or per-guild.
 
 ### Adding a New Slash Command
 
 1. Create `src/commands/my_command.rs`
 2. Add `pub mod my_command;` to `src/commands/mod.rs`
 3. Add `my_command::my_command()` to the commands vec in `src/app.rs`
-4. Use `~register` to re-register
+4. Use `@bot register` to re-register
 
 ### Adding a Subcommand to /settings
 
 1. Add the function with `#[poise::command(slash_command, guild_only, ephemeral, rename = "name")]`
 2. Add `"settings_my_subcommand"` to the parent's `subcommands(...)` list
-3. Use `~register` to re-register
+3. Use `@bot register` to re-register
 
 ## Adding a New Setting
 
@@ -150,5 +150,4 @@ RUST_LOG=observer=trace cargo run  # Run with trace logging
 |----------|----------|-------------|
 | `DISCORD_TOKEN` | Yes | Bot token from Discord Developer Portal |
 | `DATABASE_URL` | No | SQLite URL (default: `sqlite://bot.db`) |
-| `CLIENT_ID` | No | Application client ID for invite URL in notices |
 | `RUST_LOG` | No | Log level filter (e.g. `observer=trace`) |

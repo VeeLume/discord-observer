@@ -12,13 +12,29 @@ A Discord bot that tracks member joins, leaves, bans, and kicks with rich embeds
 - **Member history & stats** — Slash commands for retention stats, rejoin tracking, and member search.
 - **Notice system** — One-time patch notes with per-guild enable/disable and history.
 
+## Required Permissions
+
+The bot needs the following Discord permissions to function. Each permission maps to a specific feature:
+
+| Permission | What it enables |
+|---|---|
+| **Send Messages** | Posting join/leave/ban/kick embeds to your log channels |
+| **Manage Server** | Reading the server's invite list to track which invite each new member used |
+| **Manage Channels** | Receiving real-time `InviteCreate` / `InviteDelete` events from Discord's gateway — without this, the bot can only fall back to periodic API polling for invite detection |
+| **Ban Members** | Receiving `GuildBanAddition` events so the bot can distinguish bans from voluntary leaves and show who issued the ban |
+| **View Audit Log** | Looking up who kicked or banned a member and the reason they provided — this is the only way to detect kicks, since Discord has no gateway event for them |
+
+### Required Gateway Intents
+
+In the [Developer Portal](https://discord.com/developers/applications), enable **Server Members Intent** under *Bot → Privileged Gateway Intents*. This is required to receive join and leave events. All other intents the bot needs (`GUILD_MODERATION`, `GUILD_INVITES`, etc.) are non-privileged and enabled automatically.
+
 ## Setup
 
 1. Create a Discord bot at the [Developer Portal](https://discord.com/developers/applications).
 
-2. **Required bot permissions:** Manage Server, Manage Channels, Ban Members, View Audit Log, Send Messages.
+2. Grant the permissions listed above when inviting the bot to your server.
 
-3. **Required gateway intents:** Enable **Server Members Intent** (privileged) in the Developer Portal. All other needed intents (`GUILD_MODERATION`, `GUILD_INVITES`, etc.) are non-privileged and enabled automatically.
+3. Enable **Server Members Intent** in the Developer Portal (see above).
 
 4. Copy `.env.example` to `.env` and fill in your values:
    ```sh
@@ -30,7 +46,9 @@ A Discord bot that tracks member joins, leaves, bans, and kicks with rich embeds
    cargo run
    ```
 
-6. **First run:** Send `~register` in a server channel to register slash commands. This spawns interactive buttons to register globally or in the current guild.
+6. **First run:** Send `@bot register` in a server channel to register slash commands. This spawns interactive buttons to register globally or in the current guild.
+
+7. Use `/settings join-log`, `/settings leave-log`, and `/settings mod-log` to configure which channels receive embeds.
 
 ## Docker
 
@@ -69,13 +87,17 @@ src/
 
 | Command | Description |
 |---------|-------------|
-| `~register` | Register slash commands (owner-only prefix command) |
+| `@bot register` | Register slash commands (owner-only prefix command) |
 | `/settings join-log` | Set the join log channel |
 | `/settings leave-log` | Set the leave log channel |
 | `/settings mod-log` | Set the moderation log channel |
 | `/settings notices` | Enable or disable automatic notices |
 | `/settings notices-history` | Show sent notice history |
 | `/settings show` | Show current settings |
+| `/notice create` | Create a notice to send to guilds (owner-only) |
+| `/notice send` | Send pending notices to all guilds now (owner-only) |
+| `/notice list` | List all notice definitions (owner-only) |
+| `/notice delete` | Delete a notice (owner-only) |
 | `/userinfo` | View a member's join/leave history |
 | `/member search` | Search members by name |
 | `/stats` | Retention stats, rejoins, exits, balance |

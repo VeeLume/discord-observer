@@ -4,7 +4,7 @@ use serenity::all::{ClientBuilder, GatewayIntents};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use crate::commands::{member, register, settings, stats, userinfo};
+use crate::commands::{member, notice, register, settings, stats, userinfo};
 use crate::events::event_handler;
 use crate::state::AppState;
 
@@ -39,13 +39,10 @@ pub async fn run() -> Result<()> {
                 register::register(),
                 userinfo::userinfo(),
                 settings::settings(),
+                notice::notice(),
                 member::member(),
                 stats::stats(),
             ],
-            prefix_options: poise::PrefixFrameworkOptions {
-                prefix: Some("~".into()),
-                ..Default::default()
-            },
             event_handler: |ctx, event, framework, data| {
                 Box::pin(event_handler(ctx, event, framework, data))
             },

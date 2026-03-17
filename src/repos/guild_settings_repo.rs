@@ -10,12 +10,13 @@ const ALLOWED_SETTING_COLUMNS: &[&str] = &[
     "mod_log_channel_id",
 ];
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct GuildSettings {
     pub join_log: Option<ChannelId>,
     pub leave_log: Option<ChannelId>,
     pub mod_log: Option<ChannelId>,
     pub notices_enabled: bool,
+    pub first_seen_at: Option<String>,
 }
 
 impl Default for GuildSettings {
@@ -25,6 +26,7 @@ impl Default for GuildSettings {
             leave_log: None,
             mod_log: None,
             notices_enabled: true,
+            first_seen_at: None,
         }
     }
 }
@@ -41,8 +43,8 @@ impl<'a> GuildSettingsRepo<'a> {
 
     pub async fn get(&self, guild_id: &serenity::all::GuildId) -> Result<GuildSettings> {
         let guild = guild_id.to_string();
-        let rec = sqlx::query_as::<_, (Option<String>, Option<String>, Option<String>, i64)>(
-            "SELECT join_log_channel_id, leave_log_channel_id, mod_log_channel_id, notices_enabled \
+        let rec = sqlx::query_as::<_, (Option<String>, Option<String>, Option<String>, i64, Option<String>)>(
+            "SELECT join_log_channel_id, leave_log_channel_id, mod_log_channel_id, notices_enabled, first_seen_at \
              FROM guild_settings WHERE guild_id = ?",
         )
         .bind(&guild)
@@ -56,11 +58,12 @@ impl<'a> GuildSettingsRepo<'a> {
         };
 
         match rec {
-            Some((join, leave, mlog, notices)) => Ok(GuildSettings {
+            Some((join, leave, mlog, notices, first_seen)) => Ok(GuildSettings {
                 join_log: parse_channel(&join),
                 leave_log: parse_channel(&leave),
                 mod_log: parse_channel(&mlog),
                 notices_enabled: notices != 0,
+                first_seen_at: first_seen,
             }),
             None => Ok(GuildSettings::default()),
         }
@@ -94,13 +97,16 @@ impl<'a> GuildSettingsRepo<'a> {
         Ok(())
     }
 
-    /// Ensure row exists (used before column-wise updates).
+    /// Ensure row exists and set first_seen_at if not already set.
     pub async fn ensure_row(&self, guild_id: &serenity::all::GuildId) -> Result<()> {
         let gid = guild_id.to_string();
-        sqlx::query!(
-            r#"INSERT INTO guild_settings (guild_id) VALUES (?) ON CONFLICT(guild_id) DO NOTHING"#,
-            gid
+        let now = serenity::all::Timestamp::now().to_rfc2822();
+        sqlx::query(
+            "INSERT INTO guild_settings (guild_id, first_seen_at) VALUES (?, ?) \
+             ON CONFLICT(guild_id) DO UPDATE SET first_seen_at = COALESCE(guild_settings.first_seen_at, excluded.first_seen_at)",
         )
+        .bind(&gid)
+        .bind(&now)
         .execute(&self.db.pool)
         .await?;
         Ok(())

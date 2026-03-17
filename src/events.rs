@@ -93,11 +93,19 @@ pub async fn event_handler(
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-async fn post_embed(http: &serenity::http::Http, channel: Option<ChannelId>, embed: CreateEmbed) {
-    if let Some(ch) = channel {
-        let _ = ch
-            .send_message(http, CreateMessage::new().embed(embed))
-            .await;
+/// Post an embed to a channel and return (channel_id, message_id) if successful.
+async fn post_embed(
+    http: &serenity::http::Http,
+    channel: Option<ChannelId>,
+    embed: CreateEmbed,
+) -> Option<(ChannelId, serenity::all::MessageId)> {
+    let ch = channel?;
+    match ch
+        .send_message(http, CreateMessage::new().embed(embed))
+        .await
+    {
+        Ok(msg) => Some((ch, msg.id)),
+        Err(_) => None,
     }
 }
 
@@ -148,8 +156,11 @@ pub async fn handle_ready(
             }
         }
 
-        // Send any pending one-time notices
+        // Ensure guild row exists and first_seen_at is set
         let grepo = GuildSettingsRepo::new(&state.db);
+        grepo.ensure_row(&guild.id).await.ok();
+
+        // Send any pending one-time notices
         let settings = grepo.get(&guild.id).await.unwrap_or_default();
         let notice_ctx = NoticeContext {
             guild_id: guild.id,
@@ -201,15 +212,37 @@ pub async fn on_join(
         "Detected invite for join"
     );
 
+    let inviter_name = invite_used
+        .as_ref()
+        .and_then(|(_, snap)| snap.inviter_name.as_deref());
+
     let mrepo = MembershipsRepo::new(&state.db);
-    mrepo.record_join(guild_id, member, invite_code).await?;
+    mrepo
+        .record_join(guild_id, member, invite_code, inviter_name)
+        .await?;
     mrepo
         .upsert_usernames_fts_row(guild_id, &user_id.to_string())
         .await?;
 
-    // Count stays for rejoin detection
+    // Fetch history for rejoin detection and previous embed link
     let history = mrepo.history_for_user(guild_id, user_id).await?;
     let stay_count = history.len();
+
+    // Find the previous stay's leave embed (second-to-last entry, which should have left_at set)
+    let prev_embed_link = if history.len() >= 2 {
+        let prev = &history[history.len() - 2];
+        match (&prev.embed_channel_id, &prev.embed_message_id) {
+            (Some(ch), Some(msg)) => Some(format!(
+                "https://discord.com/channels/{}/{}/{}",
+                guild_id.get(),
+                ch,
+                msg
+            )),
+            _ => None,
+        }
+    } else {
+        None
+    };
 
     let grepo = GuildSettingsRepo::new(&state.db);
     let settings = grepo.get(&guild_id).await?;
@@ -245,12 +278,28 @@ pub async fn on_join(
         embed = embed.field("Rejoin", format!("Join #{stay_count}"), true);
     }
 
+    // Link to previous leave embed
+    if let Some(link) = prev_embed_link {
+        embed = embed.field("Previous", format!("[Leave embed]({link})"), true);
+    }
+
     // New account warning
     if is_new_account {
         embed = embed.field("⚠ New Account", "Created less than 7 days ago", false);
     }
 
-    post_embed(&ctx.http, settings.join_log, embed).await;
+    // Post embed and store the message reference
+    if let Some((ch, msg)) = post_embed(&ctx.http, settings.join_log, embed).await {
+        mrepo
+            .set_embed_ref(
+                guild_id,
+                user_id,
+                &ch.get().to_string(),
+                &msg.get().to_string(),
+            )
+            .await
+            .ok();
+    }
 
     Ok(())
 }
@@ -416,10 +465,33 @@ pub async fn on_leave(
         LeaveReason::Left => {}
     }
 
+    // Invite info from the closed stay
+    if let Some(stay) = closed_stay {
+        let invite_text = match (&stay.invite_code, &stay.inviter_name) {
+            (Some(code), Some(inviter)) => format!("`{code}` by *{inviter}*"),
+            (Some(code), None) => format!("`{code}`"),
+            _ => "Unknown".to_string(),
+        };
+        embed = embed.field("Invite", invite_text, true);
+    }
+
     // Joined timestamp from the closed stay
     if let Some(stay) = closed_stay {
         if let Ok(dt) = chrono::DateTime::parse_from_rfc2822(&stay.joined_at) {
             embed = embed.field("Joined", format!("<t:{}:R>", dt.timestamp()), true);
+        }
+    }
+
+    // Link to join embed
+    if let Some(stay) = closed_stay {
+        if let (Some(ch), Some(msg)) = (&stay.embed_channel_id, &stay.embed_message_id) {
+            let link = format!(
+                "https://discord.com/channels/{}/{}/{}",
+                guild_id.get(),
+                ch,
+                msg
+            );
+            embed = embed.field("Join Embed", format!("[Jump]({link})"), true);
         }
     }
 
@@ -432,7 +504,18 @@ pub async fn on_leave(
     let created_unix = account_created_unix(user);
     embed = embed.field("Account Created", format!("<t:{created_unix}:R>"), true);
 
-    post_embed(http, target, embed).await;
+    // Post embed and store the message reference
+    if let Some((ch, msg)) = post_embed(http, target, embed).await {
+        mrepo
+            .set_embed_ref(
+                *guild_id,
+                user.id,
+                &ch.get().to_string(),
+                &msg.get().to_string(),
+            )
+            .await
+            .ok();
+    }
 
     Ok(())
 }

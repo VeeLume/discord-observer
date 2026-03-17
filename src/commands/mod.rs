@@ -4,6 +4,7 @@ use crate::repos::MembershipRow;
 use crate::state::Ctx;
 
 pub mod member;
+pub mod notice;
 pub mod register;
 pub mod settings;
 pub mod stats;

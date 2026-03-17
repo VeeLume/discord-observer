@@ -23,6 +23,7 @@ impl<'a> MembershipsRepo<'a> {
         guild_id: GuildId,
         member: &Member,
         invite_code: Option<&str>,
+        inviter_name: Option<&str>,
     ) -> Result<()> {
         let guild_id = guild_id.to_string();
         let user_id = member.user.id.to_string();
@@ -35,17 +36,43 @@ impl<'a> MembershipsRepo<'a> {
             r#"
             INSERT INTO memberships (
                 guild_id, user_id, joined_at, left_at, banned,
-                account_username, server_username, invite_code
+                account_username, server_username, invite_code, inviter_name
             )
-            VALUES (?, ?, ?, NULL, 0, ?, ?, ?)
+            VALUES (?, ?, ?, NULL, 0, ?, ?, ?, ?)
             "#,
             guild_id,
             user_id,
             joined_at,
             account_username,
             server_username,
-            invite_code
+            invite_code,
+            inviter_name
         )
+        .execute(&self.db.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Store the embed message ID for the most recent open stay (join embed).
+    pub async fn set_embed_ref(
+        &self,
+        guild_id: GuildId,
+        user_id: UserId,
+        channel_id: &str,
+        message_id: &str,
+    ) -> Result<()> {
+        let gid = guild_id.to_string();
+        let uid = user_id.to_string();
+        sqlx::query(
+            "UPDATE memberships SET embed_channel_id = ?, embed_message_id = ? \
+             WHERE guild_id = ? AND user_id = ? AND id = (SELECT MAX(id) FROM memberships WHERE guild_id = ? AND user_id = ?)",
+        )
+        .bind(channel_id)
+        .bind(message_id)
+        .bind(&gid)
+        .bind(&uid)
+        .bind(&gid)
+        .bind(&uid)
         .execute(&self.db.pool)
         .await?;
         Ok(())
@@ -125,7 +152,10 @@ impl<'a> MembershipsRepo<'a> {
                    banned        AS "banned: bool",
                    account_username,
                    server_username,
-                   invite_code
+                   invite_code,
+                   inviter_name,
+                   embed_channel_id,
+                   embed_message_id
             FROM memberships
             WHERE guild_id = ? AND user_id = ?
             ORDER BY id ASC
@@ -720,6 +750,9 @@ pub struct MembershipRow {
     pub account_username: Option<String>,
     pub server_username: Option<String>,
     pub invite_code: Option<String>,
+    pub inviter_name: Option<String>,
+    pub embed_channel_id: Option<String>,
+    pub embed_message_id: Option<String>,
 }
 
 #[derive(Debug, Clone, FromRow)]
