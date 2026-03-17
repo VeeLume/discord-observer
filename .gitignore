@@ -1,0 +1,7 @@
+/target
+.env
+*.db
+*.db-wal
+*.db-shm
+.claude/settings.local.json
+.vscode/settings.json

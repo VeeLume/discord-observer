@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        WITH last AS (\n          SELECT user_id, MAX(id) AS last_row_id\n          FROM memberships\n          WHERE guild_id = ?\n          GROUP BY user_id\n        ),\n        agg AS (\n          SELECT user_id,\n                 COUNT(*) AS stays,\n                 SUM(CASE WHEN left_at IS NOT NULL THEN 1 ELSE 0 END) AS times_left\n          FROM memberships\n          WHERE guild_id = ?\n          GROUP BY user_id\n        )\n        SELECT a.user_id                         AS \"user_id: String\",\n               a.stays                          AS \"stay_count: i64\",\n               a.times_left                      AS \"times_left: i64\",\n               m.account_username                AS \"account_username: Option<String>\",\n               m.server_username                 AS \"server_username: Option<String>\"\n        FROM agg a\n        JOIN last l ON l.user_id = a.user_id\n        JOIN memberships m ON m.id = l.last_row_id\n        WHERE a.stays >= ?\n        ORDER BY a.stays DESC, l.last_row_id DESC\n        LIMIT ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "stay_count: i64",
+        "ordinal": 1,
+        "type_info": "Int64"
+      },
+      {
+        "name": "times_left: i64",
+        "ordinal": 2,
+        "type_info": "Int"
+      },
+      {
+        "name": "account_username: Option<String>",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "server_username: Option<String>",
+        "ordinal": 4,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "77ff0cf942d94ff6c07633e30ea1faf9272167ba1f1f442e79c327453d1d8a99"
+}

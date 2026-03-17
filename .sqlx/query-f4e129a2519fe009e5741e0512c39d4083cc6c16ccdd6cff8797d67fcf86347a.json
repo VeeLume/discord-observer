@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR IGNORE INTO guild_notices (guild_id, notice_key, sent_at) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "f4e129a2519fe009e5741e0512c39d4083cc6c16ccdd6cff8797d67fcf86347a"
+}

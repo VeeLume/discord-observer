@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT COUNT(DISTINCT user_id) AS \"cnt!: i64\"\n        FROM memberships\n        WHERE guild_id = ? AND left_at IS NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "cnt!: i64",
+        "ordinal": 0,
+        "type_info": "Int"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2c074164cba386d7cce056ee4383425f1f5107738bce90060b8b258feca814d5"
+}

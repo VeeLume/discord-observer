@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        WITH last AS (\n          SELECT user_id, MAX(id) AS last_row_id\n          FROM memberships\n          WHERE guild_id = ?\n          GROUP BY user_id\n        )\n        SELECT m.user_id                      AS \"user_id: String\",\n               m.left_at                      AS \"left_at: String\",\n               m.banned                       AS \"banned: bool\",\n               n.account_username             AS \"account_username: Option<String>\",\n               n.server_username              AS \"server_username: Option<String>\"\n        FROM memberships m\n        JOIN last l ON l.user_id = m.user_id\n        JOIN memberships n ON n.id = l.last_row_id\n        WHERE m.guild_id = ?\n          AND m.left_at IS NOT NULL\n        ORDER BY m.id DESC\n        LIMIT ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "left_at: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "banned: bool",
+        "ordinal": 2,
+        "type_info": "Bool"
+      },
+      {
+        "name": "account_username: Option<String>",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "server_username: Option<String>",
+        "ordinal": 4,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "cdc2056af5fdab5df3d32607c8fb1e6ab60e513fa600b9441a4637eee16c9162"
+}

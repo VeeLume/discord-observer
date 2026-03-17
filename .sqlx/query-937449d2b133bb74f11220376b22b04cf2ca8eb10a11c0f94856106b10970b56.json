@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT joined_at AS \"joined_at: String\"\n        FROM memberships\n        WHERE guild_id = ?\n        ORDER BY id DESC\n        LIMIT ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "joined_at: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "937449d2b133bb74f11220376b22b04cf2ca8eb10a11c0f94856106b10970b56"
+}

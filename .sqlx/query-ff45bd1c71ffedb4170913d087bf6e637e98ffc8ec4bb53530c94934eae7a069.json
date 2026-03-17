@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT 1 AS \"exists!: bool\" FROM guild_notices WHERE guild_id = ? AND notice_key = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "exists!: bool",
+        "ordinal": 0,
+        "type_info": "Int"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ff45bd1c71ffedb4170913d087bf6e637e98ffc8ec4bb53530c94934eae7a069"
+}

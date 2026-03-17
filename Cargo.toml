@@ -1,0 +1,48 @@
+[package]
+name = "observer"
+version = "0.2.0"
+edition = "2024"
+resolver = "2"
+authors = ["veelume"]
+license = "MIT OR Apache-2.0"
+description = "A Discord bot for tracking member joins, leaves, bans, kicks, and invite usage"
+repository = "https://github.com/VeeLume/discord-observer"
+
+[target.'cfg(target_env = "musl")'.dependencies]
+mimalloc = { version = "0.1.43", default-features = false }
+
+[dependencies]
+# Serenity/Poise stack
+serenity = { version = "0.12", default-features = false, features = [
+    "builder",
+    "cache",
+    "collector",
+    "client",
+    "model",
+    "utils",
+    "rustls_backend",
+    "simd_json",
+    "chrono"
+] }
+poise = "0.6"
+tokio = { version = "1.48", features = ["macros", "rt-multi-thread"] }
+
+# Database (SQLite, async)
+sqlx = { version = "0.7", features = [
+    "sqlite",
+    "runtime-tokio-rustls",
+    "macros",
+    "migrate",
+] }
+
+# Utilities
+dashmap = "6"
+time = { version = "0.3", features = ["macros", "parsing", "formatting"] }
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+dotenvy = "0.15"
+chrono = "0.4.42"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+async-trait = "0.1"

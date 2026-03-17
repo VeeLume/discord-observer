@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT m.user_id, m.account_username, m.server_username\n        FROM memberships m\n        WHERE m.guild_id = ? AND m.user_id = ?\n        ORDER BY m.id DESC\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_username",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "server_username",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "6b7c994cf7f6794b1f45a61c3740b5d588870828a33eecf9b273015f3d7878d3"
+}

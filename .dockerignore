@@ -1,0 +1,13 @@
+target
+.git
+.gitignore
+Dockerfile*
+docker-compose*.yml
+.env
+**/*.rs.bk
+**/*.log
+**/node_modules
+coverage
+dist
+sqlx-data.json.bak
+*.db

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT COUNT(*) AS \"cnt!: i64\"\n        FROM memberships\n        WHERE guild_id = ? AND left_at IS NOT NULL AND banned = 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "cnt!: i64",
+        "ordinal": 0,
+        "type_info": "Int"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "557438d5ae234c0b02c5d28e76f938638d0313e76e1df1eafba22e4bbb90aa3b"
+}

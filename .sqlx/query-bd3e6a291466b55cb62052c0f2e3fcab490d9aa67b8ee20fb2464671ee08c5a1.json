@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO usernames_fts (guild_id, user_id, account_username, server_username, label, label_norm)\n            VALUES (?, ?, ?, ?, ?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "bd3e6a291466b55cb62052c0f2e3fcab490d9aa67b8ee20fb2464671ee08c5a1"
+}

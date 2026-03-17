@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BUNDLE="${PLUGIN_BUNDLE:-icu.veelume.starcitizen.sdPlugin}"
+
+echo "▶ cargo fmt --check"
+cargo fmt --all -- --check
+
+echo "▶ cargo clippy"
+cargo clippy --all-targets --all-features
+
+echo "▶ cargo check"
+cargo check --all-targets --all-features
+
+# Stream Deck validation (skip if bundle missing)
+if [[ -d "$BUNDLE" ]]; then
+  echo "▶ streamdeck validate $BUNDLE"
+  if command -v streamdeck >/dev/null 2>&1; then
+    streamdeck validate "$BUNDLE"
+  elif command -v streamdeck.cmd >/dev/null 2>&1; then
+    cmd.exe /C streamdeck.cmd validate "$(cygpath -w "$BUNDLE")"
+  else
+    echo "✖ streamdeck CLI not found. Install with: npm i -g @elgato/cli" >&2
+    exit 1
+  fi
+else
+  echo "ℹ bundle '$BUNDLE' not found; skipping streamdeck validate"
+fi
+
+echo "✓ pre-push checks passed"

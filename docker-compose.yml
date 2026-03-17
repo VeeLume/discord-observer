@@ -1,0 +1,19 @@
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: observer:latest
+    container_name: observer
+    restart: unless-stopped
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      RUST_LOG: info
+      TZ: UTC
+      # DATABASE_URL: sqlite:///data/bot.db  # optional override
+    volumes:
+      - bot_data:/data
+    # Important for signal handling/zombie reaping with scratch
+    init: true
+volumes:
+  bot_data:

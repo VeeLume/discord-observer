@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE memberships\n               SET left_at = ?, banned = ?\n             WHERE guild_id = ? AND user_id = ? AND left_at IS NULL\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "2e572e771c0f202903fb4558b57f0f7ecb96aff6867e72821c54d5053cee6929"
+}

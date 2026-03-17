@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM usernames_fts WHERE guild_id = ? AND user_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "bdd11993d845407835b9274c4a26e3d157650f6ed0642465f113987e4dfd44a2"
+}

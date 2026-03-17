@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT COUNT(*) AS \"cnt!: i64\"\n        FROM memberships\n        WHERE guild_id = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "cnt!: i64",
+        "ordinal": 0,
+        "type_info": "Int"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "4c0562acd9eb7eb5fd98cfe2bf9275a8156126182a4dbc5af098ac7c0b634f20"
+}

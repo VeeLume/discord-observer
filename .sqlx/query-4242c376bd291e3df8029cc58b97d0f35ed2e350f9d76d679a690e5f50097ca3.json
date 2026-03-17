@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT user_id                AS \"user_id: String\",\n               joined_at              AS \"joined_at: String\",\n               left_at                AS \"left_at: Option<String>\",\n               banned                 AS \"banned: bool\"\n        FROM memberships\n        WHERE guild_id = ?\n        ORDER BY id DESC\n        LIMIT ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "joined_at: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "left_at: Option<String>",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "banned: bool",
+        "ordinal": 3,
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "4242c376bd291e3df8029cc58b97d0f35ed2e350f9d76d679a690e5f50097ca3"
+}

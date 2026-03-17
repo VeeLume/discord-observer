@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT join_log_channel_id, leave_log_channel_id, mod_log_channel_id\n            FROM guild_settings WHERE guild_id = ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "join_log_channel_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "leave_log_channel_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "mod_log_channel_id",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "0bfdef906316c2635396dc113ebce889a315b8b0d7bf6a2090ef3abc75927858"
+}

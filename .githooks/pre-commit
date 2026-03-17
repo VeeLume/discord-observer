@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "▶ cargo fmt (auto-fix)"
+cargo fmt --all
+
+# include any changes rustfmt made
+git add -A
