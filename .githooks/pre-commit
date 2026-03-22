@@ -4,5 +4,8 @@ set -euo pipefail
 echo "▶ cargo fmt (auto-fix)"
 cargo fmt --all
 
-# include any changes rustfmt made
+echo "▶ cargo sqlx prepare"
+cargo sqlx prepare
+
+# include any changes fmt/sqlx made
 git add -A
