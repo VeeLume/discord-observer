@@ -60,8 +60,8 @@ RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
     cargo build --release --target x86_64-unknown-linux-musl --bin "${BIN_NAME}" \
  && strip "target/x86_64-unknown-linux-musl/release/${BIN_NAME}"
 
-# Prepare an owned data dir we can copy into scratch
-RUN mkdir -p /data-owned
+# Prepare owned dirs we can copy into scratch
+RUN mkdir -p /data-owned /tmp-owned
 
 ################
 # Runtime stage
@@ -77,8 +77,10 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 # App binary
 COPY --from=builder "/app/target/x86_64-unknown-linux-musl/release/${BIN_NAME}" /app
 
-# Pre-create /data owned by non-root
+# Pre-create /data and /tmp owned by non-root
+# SQLite needs a temp dir for complex migrations & queries
 COPY --from=builder --chown=10001:10001 /data-owned /data
+COPY --from=builder --chown=10001:10001 /tmp-owned /tmp
 
 # Run as non-root
 USER 10001:10001
@@ -86,6 +88,7 @@ USER 10001:10001
 # Defaults (UTC, sqlite in /data)
 ENV RUST_LOG=info \
     DATABASE_URL=sqlite:///data/bot.db \
+    SQLITE_TMPDIR=/tmp \
     TZ=UTC
 
 VOLUME ["/data"]
