@@ -18,7 +18,12 @@ pub async fn ac_member(ctx: Ctx<'_>, partial: &str) -> Vec<serenity::Autocomplet
 
     rows.into_iter()
         .map(|r| {
-            let label = format_member_label(&r.user_id, &r.account_username, &r.server_username);
+            let label = format_member_label(
+                &r.user_id,
+                &r.account_username,
+                &r.display_name,
+                &r.server_nickname,
+            );
             serenity::AutocompleteChoice::new(label, r.user_id)
         })
         .collect()

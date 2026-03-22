@@ -21,16 +21,24 @@ pub fn rfc2822_to_unix(s: &str) -> Option<i64> {
 }
 
 /// Format a member label from cached names, with a non-pinging fallback.
+/// Priority: server_nickname > display_name > account_username > user_id
 pub fn format_member_label(
     user_id: &str,
     account_username: &Option<String>,
-    server_username: &Option<String>,
+    display_name: &Option<String>,
+    server_nickname: &Option<String>,
 ) -> String {
-    match (server_username.as_deref(), account_username.as_deref()) {
-        (Some(nick), Some(acc)) if !nick.is_empty() => format!("{nick} (aka {acc})"),
-        (_, Some(acc)) => acc.to_string(),
-        (Some(nick), None) => nick.to_string(),
-        _ => user_id.to_string(),
+    let best = server_nickname
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .or_else(|| display_name.as_deref().filter(|s| !s.is_empty()))
+        .or_else(|| account_username.as_deref());
+    match best {
+        Some(name) => match account_username.as_deref() {
+            Some(acc) if acc != name => format!("{name} (aka {acc})"),
+            _ => name.to_string(),
+        },
+        None => user_id.to_string(),
     }
 }
 
@@ -50,7 +58,13 @@ pub fn format_stay_lines(rows: &[MembershipRow]) -> Vec<String> {
 
             let left = match r.left_at.as_deref() {
                 Some(left_str) => {
-                    let action = if r.banned { "banned" } else { "left" };
+                    let action = if r.banned {
+                        "banned"
+                    } else if r.kicked {
+                        "kicked"
+                    } else {
+                        "left"
+                    };
                     let ts = rfc2822_to_unix(left_str)
                         .map(|ts| format!("<t:{ts}:R>"))
                         .unwrap_or_else(|| left_str.to_string());

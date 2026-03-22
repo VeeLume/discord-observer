@@ -23,6 +23,7 @@ impl<'a> MembershipsRepo<'a> {
         guild_id: GuildId,
         member: &Member,
         invite_code: Option<&str>,
+        inviter_id: Option<&str>,
         inviter_name: Option<&str>,
     ) -> Result<()> {
         let guild_id = guild_id.to_string();
@@ -30,22 +31,25 @@ impl<'a> MembershipsRepo<'a> {
         let joined_at = Timestamp::now().to_rfc2822();
 
         let account_username = member.user.name.clone();
-        let server_username = member.nick.clone();
+        let display_name = member.user.global_name.clone();
+        let server_nickname = member.nick.clone();
 
         sqlx::query!(
             r#"
             INSERT INTO memberships (
                 guild_id, user_id, joined_at, left_at, banned,
-                account_username, server_username, invite_code, inviter_name
+                account_username, display_name, server_nickname, invite_code, inviter_id, inviter_name
             )
-            VALUES (?, ?, ?, NULL, 0, ?, ?, ?, ?)
+            VALUES (?, ?, ?, NULL, 0, ?, ?, ?, ?, ?, ?)
             "#,
             guild_id,
             user_id,
             joined_at,
             account_username,
-            server_username,
+            display_name,
+            server_nickname,
             invite_code,
+            inviter_id,
             inviter_name
         )
         .execute(&self.db.pool)
@@ -63,41 +67,49 @@ impl<'a> MembershipsRepo<'a> {
     ) -> Result<()> {
         let gid = guild_id.to_string();
         let uid = user_id.to_string();
-        sqlx::query(
-            "UPDATE memberships SET embed_channel_id = ?, embed_message_id = ? \
-             WHERE guild_id = ? AND user_id = ? AND id = (SELECT MAX(id) FROM memberships WHERE guild_id = ? AND user_id = ?)",
+        sqlx::query!(
+            r#"
+            UPDATE memberships SET embed_channel_id = ?, embed_message_id = ?
+            WHERE guild_id = ? AND user_id = ?
+              AND id = (SELECT MAX(id) FROM memberships WHERE guild_id = ? AND user_id = ?)
+            "#,
+            channel_id,
+            message_id,
+            gid,
+            uid,
+            gid,
+            uid
         )
-        .bind(channel_id)
-        .bind(message_id)
-        .bind(&gid)
-        .bind(&uid)
-        .bind(&gid)
-        .bind(&uid)
         .execute(&self.db.pool)
         .await?;
         Ok(())
     }
 
-    /// Close the latest open membership stay: set left_at + banned flag.
+    /// Close the latest open membership stay: set left_at + banned/kicked flags + moderator.
     pub async fn record_leave(
         &self,
         guild_id: GuildId,
         user_id: UserId,
         banned: bool,
+        kicked: bool,
+        moderator_id: Option<&str>,
     ) -> Result<()> {
         let guild_id = guild_id.to_string();
         let user_id = user_id.to_string();
         let left_at = Timestamp::now().to_rfc2822();
         let banned_i64 = if banned { 1_i64 } else { 0_i64 };
+        let kicked_i64 = if kicked { 1_i64 } else { 0_i64 };
 
         sqlx::query!(
             r#"
             UPDATE memberships
-               SET left_at = ?, banned = ?
+               SET left_at = ?, banned = ?, kicked = ?, moderator_id = ?
              WHERE guild_id = ? AND user_id = ? AND left_at IS NULL
             "#,
             left_at,
             banned_i64,
+            kicked_i64,
+            moderator_id,
             guild_id,
             user_id
         )
@@ -135,6 +147,144 @@ impl<'a> MembershipsRepo<'a> {
         Ok(())
     }
 
+    /// Create a membership stay for a user discovered at startup (backfill).
+    /// Uses the actual Discord join timestamp rather than the current time.
+    pub async fn record_backfill_join(
+        &self,
+        guild_id: GuildId,
+        user_id: UserId,
+        joined_at: Option<Timestamp>,
+        account_username: &str,
+        display_name: Option<&str>,
+        server_nickname: Option<&str>,
+    ) -> Result<()> {
+        let gid = guild_id.to_string();
+        let uid = user_id.to_string();
+        let joined_at = joined_at.unwrap_or_else(Timestamp::now).to_rfc2822();
+
+        sqlx::query!(
+            r#"
+            INSERT INTO memberships (guild_id, user_id, joined_at, left_at, banned, kicked, account_username, display_name, server_nickname)
+            VALUES (?, ?, ?, NULL, 0, 0, ?, ?, ?)
+            "#,
+            gid,
+            uid,
+            joined_at,
+            account_username,
+            display_name,
+            server_nickname
+        )
+        .execute(&self.db.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Update names on the user's current open stay.
+    pub async fn update_names(
+        &self,
+        guild_id: GuildId,
+        user_id: UserId,
+        account_username: &str,
+        display_name: Option<&str>,
+        server_nickname: Option<&str>,
+    ) -> Result<()> {
+        let gid = guild_id.to_string();
+        let uid = user_id.to_string();
+        sqlx::query!(
+            r#"
+            UPDATE memberships
+            SET account_username = ?, display_name = ?, server_nickname = ?
+            WHERE guild_id = ? AND user_id = ? AND left_at IS NULL
+              AND id = (SELECT MAX(id) FROM memberships WHERE guild_id = ? AND user_id = ? AND left_at IS NULL)
+            "#,
+            account_username,
+            display_name,
+            server_nickname,
+            gid,
+            uid,
+            gid,
+            uid
+        )
+        .execute(&self.db.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Get all user IDs that have an open stay (left_at IS NULL) in a guild.
+    pub async fn open_stay_user_ids(&self, guild_id: GuildId) -> Result<Vec<String>> {
+        let gid = guild_id.to_string();
+        let rows = sqlx::query!(
+            r#"
+            SELECT DISTINCT user_id AS "user_id: String"
+            FROM memberships
+            WHERE guild_id = ? AND left_at IS NULL
+            "#,
+            gid
+        )
+        .fetch_all(&self.db.pool)
+        .await?;
+        Ok(rows.into_iter().map(|r| r.user_id).collect())
+    }
+
+    /// Close open stays for users no longer in the guild, with ban/kick classification
+    /// from audit log results. Users not in `reasons` default to voluntary leave.
+    pub async fn close_stale_stays_classified(
+        &self,
+        guild_id: GuildId,
+        stale_user_ids: &[String],
+        reasons: &std::collections::HashMap<String, (bool, bool)>, // user_id → (banned, kicked)
+    ) -> Result<u64> {
+        if stale_user_ids.is_empty() {
+            return Ok(0);
+        }
+        let gid = guild_id.to_string();
+        let left_at = Timestamp::now().to_rfc2822();
+        let mut closed = 0u64;
+        for uid in stale_user_ids {
+            let &(banned, kicked) = reasons.get(uid).unwrap_or(&(false, false));
+            let banned_i = if banned { 1_i64 } else { 0_i64 };
+            let kicked_i = if kicked { 1_i64 } else { 0_i64 };
+            let result = sqlx::query!(
+                r#"
+                UPDATE memberships SET left_at = ?, banned = ?, kicked = ?
+                WHERE guild_id = ? AND user_id = ? AND left_at IS NULL
+                "#,
+                left_at,
+                banned_i,
+                kicked_i,
+                gid,
+                uid
+            )
+            .execute(&self.db.pool)
+            .await?;
+            closed += result.rows_affected();
+        }
+        Ok(closed)
+    }
+
+    /// Find leave embeds where the given user was the moderator (for ban/kick actions).
+    /// Returns (embed_channel_id, embed_message_id) pairs.
+    pub async fn embeds_by_moderator(
+        &self,
+        guild_id: GuildId,
+        moderator_id: &str,
+    ) -> Result<Vec<(String, String)>> {
+        let gid = guild_id.to_string();
+        let rows = sqlx::query!(
+            r#"
+            SELECT embed_channel_id AS "ch!: String", embed_message_id AS "msg!: String"
+            FROM memberships
+            WHERE guild_id = ? AND moderator_id = ?
+              AND embed_channel_id IS NOT NULL AND embed_message_id IS NOT NULL
+            "#,
+            gid,
+            moderator_id
+        )
+        .fetch_all(&self.db.pool)
+        .await?;
+        Ok(rows.into_iter().map(|r| (r.ch, r.msg)).collect())
+    }
+
     // ---------- reads ----------
 
     pub async fn history_for_user(
@@ -150,10 +300,14 @@ impl<'a> MembershipsRepo<'a> {
             SELECT joined_at,
                    left_at,
                    banned        AS "banned: bool",
+                   kicked        AS "kicked: bool",
                    account_username,
-                   server_username,
+                   display_name,
+                   server_nickname,
                    invite_code,
+                   inviter_id,
                    inviter_name,
+                   moderator_id,
                    embed_channel_id,
                    embed_message_id
             FROM memberships
@@ -186,7 +340,8 @@ impl<'a> MembershipsRepo<'a> {
               m.user_id          AS user_id,
               l.last_row_id      AS last_row_id,
               m.account_username AS account_username,
-              m.server_username  AS server_username
+              m.display_name     AS display_name,
+              m.server_nickname  AS server_nickname
             FROM last l
             JOIN memberships m
               ON m.id = l.last_row_id
@@ -222,7 +377,8 @@ impl<'a> MembershipsRepo<'a> {
           m.user_id          AS user_id,
           l.last_row_id      AS last_row_id,
           m.account_username AS account_username,
-          m.server_username  AS server_username
+          m.display_name     AS display_name,
+          m.server_nickname  AS server_nickname
         FROM last l
         JOIN memberships m
           ON m.id = l.last_row_id
@@ -266,17 +422,20 @@ impl<'a> MembershipsRepo<'a> {
               m.user_id          AS user_id,
               l.last_row_id      AS last_row_id,
               m.account_username AS account_username,
-              m.server_username  AS server_username
+              m.display_name     AS display_name,
+              m.server_nickname  AS server_nickname
             FROM last l
             JOIN memberships m
               ON m.id = l.last_row_id
             WHERE (m.account_username IS NOT NULL AND m.account_username LIKE ?)
-               OR (m.server_username  IS NOT NULL AND m.server_username  LIKE ?)
+               OR (m.display_name     IS NOT NULL AND m.display_name     LIKE ?)
+               OR (m.server_nickname  IS NOT NULL AND m.server_nickname  LIKE ?)
             ORDER BY l.last_row_id DESC
             LIMIT ?
             "#,
         )
         .bind(guild_id.to_string())
+        .bind(like)
         .bind(like)
         .bind(like)
         .bind(limit)
@@ -313,7 +472,8 @@ impl<'a> MembershipsRepo<'a> {
                a.stays                          AS "stay_count: i64",
                a.times_left                      AS "times_left: i64",
                m.account_username                AS "account_username: Option<String>",
-               m.server_username                 AS "server_username: Option<String>"
+               m.display_name                    AS "display_name: Option<String>",
+               m.server_nickname                 AS "server_nickname: Option<String>"
         FROM agg a
         JOIN last l ON l.user_id = a.user_id
         JOIN memberships m ON m.id = l.last_row_id
@@ -336,7 +496,8 @@ impl<'a> MembershipsRepo<'a> {
                 rejoin_count: r.stay_count.unwrap_or(0),
                 times_left: r.times_left.unwrap_or(0),
                 account_username: r.account_username.flatten(),
-                server_username: r.server_username.flatten(),
+                display_name: r.display_name.flatten(),
+                server_nickname: r.server_nickname.flatten(),
             })
             .collect();
 
@@ -362,7 +523,8 @@ impl<'a> MembershipsRepo<'a> {
                m.left_at                      AS "left_at: String",
                m.banned                       AS "banned: bool",
                n.account_username             AS "account_username: Option<String>",
-               n.server_username              AS "server_username: Option<String>"
+               n.display_name                 AS "display_name: Option<String>",
+               n.server_nickname              AS "server_nickname: Option<String>"
         FROM memberships m
         JOIN last l ON l.user_id = m.user_id
         JOIN memberships n ON n.id = l.last_row_id
@@ -385,7 +547,8 @@ impl<'a> MembershipsRepo<'a> {
                 left_at: r.left_at.expect("left_at is NOT NULL"),
                 banned: r.banned,
                 account_username: r.account_username.flatten(),
-                server_username: r.server_username.flatten(),
+                display_name: r.display_name.flatten(),
+                server_nickname: r.server_nickname.flatten(),
             })
             .collect();
 
@@ -551,14 +714,14 @@ impl<'a> MembershipsRepo<'a> {
           WHERE guild_id = ?
           GROUP BY user_id
         )
-        INSERT INTO usernames_fts (guild_id, user_id, account_username, server_username, label, label_norm)
+        INSERT INTO usernames_fts (guild_id, user_id, account_username, server_nickname, label, label_norm)
         SELECT
           ?                               AS guild_id,
           m.user_id                       AS user_id,
           m.account_username              AS account_username,
-          m.server_username               AS server_username,
-          COALESCE(NULLIF(m.server_username, ''), m.account_username, 'User ' || m.user_id) AS label,
-          LOWER(COALESCE(NULLIF(m.server_username, ''), m.account_username, m.user_id))      AS label_norm
+          m.server_nickname               AS server_nickname,
+          COALESCE(NULLIF(m.server_nickname, ''), NULLIF(m.display_name, ''), m.account_username, 'User ' || m.user_id) AS label,
+          LOWER(COALESCE(NULLIF(m.server_nickname, ''), NULLIF(m.display_name, ''), m.account_username, m.user_id))      AS label_norm
         FROM last l
         JOIN memberships m ON m.id = l.last_row_id
         "#,
@@ -582,7 +745,7 @@ impl<'a> MembershipsRepo<'a> {
         // Grab the latest membership row to get last-known names.
         let row = sqlx::query!(
             r#"
-        SELECT m.user_id, m.account_username, m.server_username
+        SELECT m.user_id, m.account_username, m.display_name, m.server_nickname
         FROM memberships m
         WHERE m.guild_id = ? AND m.user_id = ?
         ORDER BY m.id DESC
@@ -605,9 +768,10 @@ impl<'a> MembershipsRepo<'a> {
 
         if let Some(r) = row {
             let label = r
-                .server_username
+                .server_nickname
                 .as_deref()
                 .filter(|s| !s.is_empty())
+                .or_else(|| r.display_name.as_deref().filter(|s| !s.is_empty()))
                 .map(|s| s.to_string())
                 .or(r.account_username.clone())
                 .unwrap_or_else(|| format!("User {}", r.user_id));
@@ -616,13 +780,13 @@ impl<'a> MembershipsRepo<'a> {
 
             sqlx::query!(
             r#"
-            INSERT INTO usernames_fts (guild_id, user_id, account_username, server_username, label, label_norm)
+            INSERT INTO usernames_fts (guild_id, user_id, account_username, server_nickname, label, label_norm)
             VALUES (?, ?, ?, ?, ?, ?)
             "#,
             gid,
             uid,
             r.account_username,
-            r.server_username,
+            r.server_nickname,
             label,
             label_norm
         )
@@ -650,9 +814,9 @@ impl<'a> MembershipsRepo<'a> {
 
         // Try FTS5 first.
         // Build a MATCH query that hits normalized label and raw fields with prefix.
-        // Example: label_norm:par* OR account_username:par* OR server_username:par*
+        // Example: label_norm:par* OR account_username:par* OR server_nickname:par*
         let match_expr = format!(
-            "label_norm:{q}* OR account_username:{q}* OR server_username:{q}*",
+            "label_norm:{q}* OR account_username:{q}* OR server_nickname:{q}*",
             q = trimmed.to_lowercase().replace('"', "") // simplistic sanitize
         );
 
@@ -675,7 +839,8 @@ impl<'a> MembershipsRepo<'a> {
           m.user_id          AS user_id,
           l.last_row_id      AS last_row_id,
           m.account_username AS account_username,
-          m.server_username  AS server_username
+          m.display_name     AS display_name,
+          m.server_nickname  AS server_nickname
         FROM hits h
         JOIN last l ON l.user_id = h.user_id
         JOIN memberships m ON m.id = l.last_row_id
@@ -719,17 +884,20 @@ impl<'a> MembershipsRepo<'a> {
           m.user_id          AS user_id,
           l.last_row_id      AS last_row_id,
           m.account_username AS account_username,
-          m.server_username  AS server_username
+          m.display_name     AS display_name,
+          m.server_nickname  AS server_nickname
         FROM last l
         JOIN memberships m
           ON m.id = l.last_row_id
         WHERE (m.account_username IS NOT NULL AND m.account_username LIKE ?)
-           OR (m.server_username  IS NOT NULL AND m.server_username  LIKE ?)
+           OR (m.display_name     IS NOT NULL AND m.display_name     LIKE ?)
+           OR (m.server_nickname  IS NOT NULL AND m.server_nickname  LIKE ?)
         ORDER BY l.last_row_id DESC
         LIMIT ?
         "#,
         )
         .bind(&gid)
+        .bind(&like)
         .bind(&like)
         .bind(&like)
         .bind(limit)
@@ -747,10 +915,14 @@ pub struct MembershipRow {
     pub joined_at: String,
     pub left_at: Option<String>,
     pub banned: bool,
+    pub kicked: bool,
     pub account_username: Option<String>,
-    pub server_username: Option<String>,
+    pub display_name: Option<String>,
+    pub server_nickname: Option<String>,
     pub invite_code: Option<String>,
+    pub inviter_id: Option<String>,
     pub inviter_name: Option<String>,
+    pub moderator_id: Option<String>,
     pub embed_channel_id: Option<String>,
     pub embed_message_id: Option<String>,
 }
@@ -760,7 +932,8 @@ pub struct UserSummary {
     pub user_id: String,
     pub last_row_id: i64,
     pub account_username: Option<String>,
-    pub server_username: Option<String>,
+    pub display_name: Option<String>,
+    pub server_nickname: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -769,7 +942,8 @@ pub struct RejoinerRow {
     pub rejoin_count: i64,
     pub times_left: i64,
     pub account_username: Option<String>,
-    pub server_username: Option<String>,
+    pub display_name: Option<String>,
+    pub server_nickname: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -778,7 +952,8 @@ pub struct ExitRow {
     pub left_at: String, // RFC2822
     pub banned: bool,
     pub account_username: Option<String>,
-    pub server_username: Option<String>,
+    pub display_name: Option<String>,
+    pub server_nickname: Option<String>,
 }
 
 #[derive(Debug, Clone)]

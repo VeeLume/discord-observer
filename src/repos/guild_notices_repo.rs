@@ -46,10 +46,11 @@ impl<'a> GuildNoticesRepo<'a> {
     /// Get all sent notices for a guild, most recent first.
     pub async fn get_history(&self, guild_id: GuildId) -> Result<Vec<SentNotice>> {
         let gid = guild_id.to_string();
-        let rows = sqlx::query_as::<_, SentNotice>(
+        let rows = sqlx::query_as!(
+            SentNotice,
             "SELECT notice_key, sent_at FROM guild_notices WHERE guild_id = ? ORDER BY rowid DESC",
+            gid
         )
-        .bind(gid)
         .fetch_all(&self.db.pool)
         .await?;
         Ok(rows)
@@ -68,15 +69,15 @@ impl<'a> GuildNoticesRepo<'a> {
     ) -> Result<()> {
         let created_at = Timestamp::now().to_rfc2822();
         let current_only_val: i64 = if current_only { 1 } else { 0 };
-        sqlx::query(
+        sqlx::query!(
             "INSERT INTO notices (key, title, body, color, current_only, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            key,
+            title,
+            body,
+            color,
+            current_only_val,
+            created_at
         )
-        .bind(key)
-        .bind(title)
-        .bind(body)
-        .bind(color)
-        .bind(current_only_val)
-        .bind(created_at)
         .execute(&self.db.pool)
         .await?;
         Ok(())
@@ -84,8 +85,9 @@ impl<'a> GuildNoticesRepo<'a> {
 
     /// Get all notice definitions.
     pub async fn get_all_notices(&self) -> Result<Vec<NoticeRow>> {
-        let rows = sqlx::query_as::<_, NoticeRow>(
-            "SELECT id, key, title, body, color, current_only, created_at FROM notices ORDER BY id",
+        let rows = sqlx::query_as!(
+            NoticeRow,
+            r#"SELECT id AS "id!: i64", key, title, body, color, current_only, created_at FROM notices ORDER BY id"#
         )
         .fetch_all(&self.db.pool)
         .await?;
@@ -94,10 +96,11 @@ impl<'a> GuildNoticesRepo<'a> {
 
     /// Get a single notice by key.
     pub async fn get_notice_by_key(&self, key: &str) -> Result<Option<NoticeRow>> {
-        let row = sqlx::query_as::<_, NoticeRow>(
-            "SELECT id, key, title, body, color, current_only, created_at FROM notices WHERE key = ?",
+        let row = sqlx::query_as!(
+            NoticeRow,
+            r#"SELECT id AS "id!: i64", key, title, body, color, current_only, created_at FROM notices WHERE key = ?"#,
+            key
         )
-        .bind(key)
         .fetch_optional(&self.db.pool)
         .await?;
         Ok(row)
@@ -105,8 +108,7 @@ impl<'a> GuildNoticesRepo<'a> {
 
     /// Delete a notice definition by key. Guild send records are kept for history.
     pub async fn delete_notice(&self, key: &str) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM notices WHERE key = ?")
-            .bind(key)
+        let result = sqlx::query!("DELETE FROM notices WHERE key = ?", key)
             .execute(&self.db.pool)
             .await?;
         Ok(result.rows_affected() > 0)
@@ -114,12 +116,13 @@ impl<'a> GuildNoticesRepo<'a> {
 
     /// Count how many guilds have received a specific notice.
     pub async fn count_sent(&self, notice_key: &str) -> Result<i64> {
-        let row =
-            sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM guild_notices WHERE notice_key = ?")
-                .bind(notice_key)
-                .fetch_one(&self.db.pool)
-                .await?;
-        Ok(row.0)
+        let row = sqlx::query!(
+            r#"SELECT COUNT(*) AS "cnt!: i64" FROM guild_notices WHERE notice_key = ?"#,
+            notice_key
+        )
+        .fetch_one(&self.db.pool)
+        .await?;
+        Ok(row.cnt)
     }
 }
 

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM notices WHERE key = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "268743b90e8ae8e0a1b807bfed8258eb4327bca2eb8fb2e03b28ee0c234bd0bb"
+}

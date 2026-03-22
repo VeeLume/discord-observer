@@ -51,7 +51,12 @@ pub async fn stats_rejoiners(
 
     let mut lines = Vec::with_capacity(rows.len());
     for r in rows {
-        let label = format_member_label(&r.user_id, &r.account_username, &r.server_username);
+        let label = format_member_label(
+            &r.user_id,
+            &r.account_username,
+            &r.display_name,
+            &r.server_nickname,
+        );
         let rejoins = r.rejoin_count.saturating_sub(1);
         lines.push(format!(
             "• {label} — {rejoins} rejoins ({} exits)",
@@ -112,7 +117,8 @@ pub async fn stats_exits(
         user_id: String,
         banned: bool,
         account_username: Option<String>,
-        server_username: Option<String>,
+        display_name: Option<String>,
+        server_nickname: Option<String>,
     }
 
     let mut filtered = Vec::new();
@@ -132,7 +138,8 @@ pub async fn stats_exits(
                     user_id: r.user_id,
                     banned: r.banned,
                     account_username: r.account_username,
-                    server_username: r.server_username,
+                    display_name: r.display_name,
+                    server_nickname: r.server_nickname,
                 });
             }
         }
@@ -156,7 +163,12 @@ pub async fn stats_exits(
     lines.push("".into());
 
     for r in filtered.iter().take(show as usize) {
-        let label = format_member_label(&r.user_id, &r.account_username, &r.server_username);
+        let label = format_member_label(
+            &r.user_id,
+            &r.account_username,
+            &r.display_name,
+            &r.server_nickname,
+        );
         let kind = if r.banned { "**banned**" } else { "left" };
         lines.push(format!("• {label} — {kind} — <t:{}:R>", r.unix_ts));
     }

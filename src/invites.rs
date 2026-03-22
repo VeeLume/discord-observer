@@ -9,6 +9,7 @@ use serenity::http::Http;
 pub struct InviteSnapshot {
     pub uses: u64,
     pub max_uses: u64,
+    pub inviter_id: Option<String>,
     pub inviter_name: Option<String>,
 }
 
@@ -32,13 +33,15 @@ pub async fn fetch_invites_map(
     Ok(invites
         .into_iter()
         .map(|i| {
-            let inviter_name = i.inviter.as_ref().map(|u| u.name.clone());
+            let inviter_id = i.inviter.as_ref().map(|u| u.id.to_string());
+            let inviter_name = i.inviter.as_ref().map(|u| u.display_name().to_string());
             (
                 i.code,
                 TrackedInvite {
                     snapshot: InviteSnapshot {
                         uses: i.uses,
                         max_uses: i.max_uses as u64,
+                        inviter_id,
                         inviter_name,
                     },
                     created_at: now,

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO notices (key, title, body, color, current_only, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "85740b802870471ee55409ce9c6920b5f5c20a086c4b328cac956b2caba694be"
+}

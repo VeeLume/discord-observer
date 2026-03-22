@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!: i64\", key, title, body, color, current_only, created_at FROM notices WHERE key = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Int64"
+      },
+      {
+        "name": "key",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "title",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "body",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "color",
+        "ordinal": 4,
+        "type_info": "Int64"
+      },
+      {
+        "name": "current_only",
+        "ordinal": 5,
+        "type_info": "Int64"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 6,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "896e0ae94fe9ded46a63ed4bc2cb9db365ce5e2991c5bad6c2d04ba500121f6f"
+}

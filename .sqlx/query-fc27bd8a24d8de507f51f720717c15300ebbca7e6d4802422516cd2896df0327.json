@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE guild_settings SET notices_enabled = ? WHERE guild_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "fc27bd8a24d8de507f51f720717c15300ebbca7e6d4802422516cd2896df0327"
+}

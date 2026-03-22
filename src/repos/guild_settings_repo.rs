@@ -101,12 +101,14 @@ impl<'a> GuildSettingsRepo<'a> {
     pub async fn ensure_row(&self, guild_id: &serenity::all::GuildId) -> Result<()> {
         let gid = guild_id.to_string();
         let now = serenity::all::Timestamp::now().to_rfc2822();
-        sqlx::query(
-            "INSERT INTO guild_settings (guild_id, first_seen_at) VALUES (?, ?) \
-             ON CONFLICT(guild_id) DO UPDATE SET first_seen_at = COALESCE(guild_settings.first_seen_at, excluded.first_seen_at)",
+        sqlx::query!(
+            r#"
+            INSERT INTO guild_settings (guild_id, first_seen_at) VALUES (?, ?)
+            ON CONFLICT(guild_id) DO UPDATE SET first_seen_at = COALESCE(guild_settings.first_seen_at, excluded.first_seen_at)
+            "#,
+            gid,
+            now
         )
-        .bind(&gid)
-        .bind(&now)
         .execute(&self.db.pool)
         .await?;
         Ok(())
@@ -146,11 +148,13 @@ impl<'a> GuildSettingsRepo<'a> {
     ) -> Result<()> {
         let gid = guild_id.to_string();
         let val = if enabled { 1_i64 } else { 0_i64 };
-        sqlx::query("UPDATE guild_settings SET notices_enabled = ? WHERE guild_id = ?")
-            .bind(val)
-            .bind(gid)
-            .execute(&self.db.pool)
-            .await?;
+        sqlx::query!(
+            "UPDATE guild_settings SET notices_enabled = ? WHERE guild_id = ?",
+            val,
+            gid
+        )
+        .execute(&self.db.pool)
+        .await?;
         Ok(())
     }
 

@@ -68,7 +68,14 @@ Manage Server, Manage Channels, Ban Members, View Audit Log, Send Messages.
 
 ## Database
 
-SQLite via sqlx with runtime queries (`sqlx::query_as`, `sqlx::query`). Migrations live in `migrations/` and run automatically on connect.
+SQLite via sqlx with compile-time checked queries (`sqlx::query!`, `sqlx::query_as!`). Migrations live in `migrations/` and run automatically on connect.
+
+**IMPORTANT:** Never apply schema changes directly to the database (e.g. `ALTER TABLE` via sqlite3). Always use the sqlx CLI:
+- `sqlx migrate add <name>` — create a new migration file in `migrations/`
+- `sqlx migrate run` — apply pending migrations
+- `cargo sqlx prepare` — regenerate the offline query cache in `.sqlx/` (required after adding or changing `query!` macros)
+
+sqlx tracks migrations in `_sqlx_migrations` with SHA-384 checksums — manual schema changes cause checksum mismatches or "duplicate column" errors on next run.
 
 ### Tables
 

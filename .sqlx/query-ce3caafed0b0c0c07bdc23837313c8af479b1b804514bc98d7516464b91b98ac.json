@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) AS \"cnt!: i64\" FROM guild_notices WHERE notice_key = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "cnt!: i64",
+        "ordinal": 0,
+        "type_info": "Int"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ce3caafed0b0c0c07bdc23837313c8af479b1b804514bc98d7516464b91b98ac"
+}

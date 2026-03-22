@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT notice_key, sent_at FROM guild_notices WHERE guild_id = ? ORDER BY rowid DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "notice_key",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "sent_at",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "23ad4b00153fbb1cc735a909d4b3efd712f0634df4f0b436ed256168cfafd5fe"
+}

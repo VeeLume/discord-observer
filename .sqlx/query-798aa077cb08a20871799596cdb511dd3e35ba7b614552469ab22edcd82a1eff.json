@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        WITH last AS (\n          SELECT user_id, MAX(id) AS last_row_id\n          FROM memberships\n          WHERE guild_id = ?\n          GROUP BY user_id\n        )\n        INSERT INTO usernames_fts (guild_id, user_id, account_username, server_nickname, label, label_norm)\n        SELECT\n          ?                               AS guild_id,\n          m.user_id                       AS user_id,\n          m.account_username              AS account_username,\n          m.server_nickname               AS server_nickname,\n          COALESCE(NULLIF(m.server_nickname, ''), NULLIF(m.display_name, ''), m.account_username, 'User ' || m.user_id) AS label,\n          LOWER(COALESCE(NULLIF(m.server_nickname, ''), NULLIF(m.display_name, ''), m.account_username, m.user_id))      AS label_norm\n        FROM last l\n        JOIN memberships m ON m.id = l.last_row_id\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "798aa077cb08a20871799596cdb511dd3e35ba7b614552469ab22edcd82a1eff"
+}

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT DISTINCT user_id AS \"user_id: String\"\n            FROM memberships\n            WHERE guild_id = ? AND left_at IS NULL\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "8b32f6600749d076d83333f8d299d3049b3baba99e91e862c7334031d8ebade7"
+}

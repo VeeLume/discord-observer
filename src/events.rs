@@ -1,10 +1,14 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::Result;
 use poise::FrameworkContext;
 use poise::serenity_prelude as serenity;
-use serenity::all::{ChannelId, CreateEmbed, CreateMessage, GuildId, Timestamp, User, UserId};
+use serenity::all::{
+    ChannelId, CreateEmbed, CreateMessage, EditMessage, GuildId, MessageId, Timestamp, User, UserId,
+};
+use serenity::futures::StreamExt;
 use serenity::prelude::Context;
 
 use crate::invites;
@@ -37,6 +41,16 @@ pub async fn event_handler(
             );
             on_join(ctx, state, new_member).await?;
         }
+        GuildMemberUpdate { event, .. } => {
+            tracing::trace!(
+                t,
+                guild_id = %event.guild_id,
+                user_id = %event.user.id,
+                nick = ?event.nick,
+                "GuildMemberUpdate"
+            );
+            on_member_update(state, event).await?;
+        }
         GuildMemberRemoval { guild_id, user, .. } => {
             tracing::trace!(
                 t,
@@ -45,11 +59,6 @@ pub async fn event_handler(
                 username = %user.name,
                 "GuildMemberRemoval"
             );
-            // Delay leave processing to give GuildBanAddition time to arrive first,
-            // so we can correctly classify bans vs voluntary leaves.
-            // GuildBanAddition typically arrives ~65ms before GuildMemberRemoval;
-            // 3s gives plenty of margin.
-            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
             on_leave(&ctx.http, state, guild_id, user).await?;
         }
         GuildBanAddition {
@@ -133,6 +142,12 @@ pub async fn handle_ready(
     let mrepo = MembershipsRepo::new(&state.db);
     for guild in &ready.guilds {
         tracing::info!("Connected to guild: {}", guild.id);
+        // Sync members: update names that changed while offline, close stale stays
+        if let Err(e) = sync_members(ctx, &mrepo, guild.id).await {
+            tracing::warn!("Failed to sync members for guild {}: {}", guild.id, e);
+        }
+
+        // Rebuild FTS after sync so it reflects the freshest names
         mrepo
             .rebuild_usernames_fts_for_guild(guild.id)
             .await
@@ -185,6 +200,143 @@ pub async fn handle_ready(
     Ok(())
 }
 
+// ── Startup Sync ─────────────────────────────────────────────────────────────
+
+/// Reconcile DB state with reality after the bot was offline (or on first connect).
+/// - Backfills stays for members not yet in the DB (joined while offline, or existing
+///   members when the bot first joins a server).
+/// - Updates account_username, display_name, and server_nickname for current members.
+/// - Closes open stays for users who left while the bot was offline, using the audit
+///   log to classify bans/kicks where possible.
+async fn sync_members(ctx: &Context, mrepo: &MembershipsRepo<'_>, guild_id: GuildId) -> Result<()> {
+    // Snapshot of who currently has an open stay — used to decide update vs backfill
+    let open_ids: HashSet<String> = mrepo
+        .open_stay_user_ids(guild_id)
+        .await?
+        .into_iter()
+        .collect();
+
+    let mut current_members: HashSet<String> = HashSet::new();
+    let mut stream = guild_id.members_iter(&ctx.http).boxed();
+    let mut updated = 0u64;
+    let mut backfilled = 0u64;
+
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(member) => {
+                let uid = member.user.id.to_string();
+                current_members.insert(uid.clone());
+
+                if open_ids.contains(&uid) {
+                    // Existing stay — refresh names
+                    mrepo
+                        .update_names(
+                            guild_id,
+                            member.user.id,
+                            &member.user.name,
+                            member.user.global_name.as_deref(),
+                            member.nick.as_deref(),
+                        )
+                        .await
+                        .ok();
+                    updated += 1;
+                } else {
+                    // No open stay — backfill using Discord's actual join timestamp
+                    mrepo
+                        .record_backfill_join(
+                            guild_id,
+                            member.user.id,
+                            member.joined_at,
+                            &member.user.name,
+                            member.user.global_name.as_deref(),
+                            member.nick.as_deref(),
+                        )
+                        .await
+                        .ok();
+                    backfilled += 1;
+                }
+            }
+            Err(e) => {
+                tracing::warn!(guild_id = %guild_id, "Error streaming members: {e}");
+                break;
+            }
+        }
+    }
+
+    // Close open stays for users no longer in the guild
+    let stale: Vec<String> = open_ids
+        .into_iter()
+        .filter(|uid| !current_members.contains(uid))
+        .collect();
+
+    let closed = if stale.is_empty() {
+        0
+    } else {
+        // Check audit log for bans/kicks before closing
+        let reasons = check_audit_log_for_stale_removals(&ctx.http, guild_id, &stale).await;
+        mrepo
+            .close_stale_stays_classified(guild_id, &stale, &reasons)
+            .await?
+    };
+
+    tracing::info!(
+        guild_id = %guild_id,
+        updated,
+        backfilled,
+        closed,
+        "Startup member sync complete"
+    );
+    Ok(())
+}
+
+/// Check the audit log for recent bans/kicks targeting any of the stale user IDs.
+/// Returns a map of user_id → (banned, kicked) for those found in the log.
+/// Users not in the returned map are treated as voluntary leaves.
+async fn check_audit_log_for_stale_removals(
+    http: &serenity::http::Http,
+    guild_id: GuildId,
+    stale_user_ids: &[String],
+) -> std::collections::HashMap<String, (bool, bool)> {
+    use serenity::all::audit_log::{Action, MemberAction};
+
+    let stale_set: HashSet<&str> = stale_user_ids.iter().map(|s| s.as_str()).collect();
+    let mut results = std::collections::HashMap::new();
+
+    for (action_type, is_ban) in [
+        (Action::Member(MemberAction::BanAdd), true),
+        (Action::Member(MemberAction::Kick), false),
+    ] {
+        let logs = match guild_id
+            .audit_logs(http, Some(action_type), None, None, Some(50))
+            .await
+        {
+            Ok(l) => l,
+            Err(e) => {
+                tracing::warn!(guild_id = %guild_id, "Failed to fetch audit logs for startup sync: {e}");
+                continue;
+            }
+        };
+
+        for entry in &logs.entries {
+            let target_id = match entry.target_id {
+                Some(t) => t.get().to_string(),
+                None => continue,
+            };
+
+            if !stale_set.contains(target_id.as_str()) {
+                continue;
+            }
+
+            // Only record the first (most recent) action per user
+            results
+                .entry(target_id)
+                .or_insert_with(|| (is_ban, !is_ban));
+        }
+    }
+
+    results
+}
+
 // ── Join ─────────────────────────────────────────────────────────────────────
 
 pub async fn on_join(
@@ -212,13 +364,16 @@ pub async fn on_join(
         "Detected invite for join"
     );
 
+    let inviter_id = invite_used
+        .as_ref()
+        .and_then(|(_, snap)| snap.inviter_id.as_deref());
     let inviter_name = invite_used
         .as_ref()
         .and_then(|(_, snap)| snap.inviter_name.as_deref());
 
     let mrepo = MembershipsRepo::new(&state.db);
     mrepo
-        .record_join(guild_id, member, invite_code, inviter_name)
+        .record_join(guild_id, member, invite_code, inviter_id, inviter_name)
         .await?;
     mrepo
         .upsert_usernames_fts_row(guild_id, &user_id.to_string())
@@ -260,15 +415,19 @@ pub async fn on_join(
         .title("Member joined")
         .description(format!("<@{}> joined the server", user_id.get()))
         .thumbnail(member.user.face())
+        .field("Username", &member.user.name, true)
         .field("Account Created", format!("<t:{}:R>", created_unix), true)
         .timestamp(Timestamp::now());
 
-    // Invite info
+    // Invite info — use @mention for the inviter (clickable while they're on the server)
     let invite_text = match &invite_used {
-        Some((code, snap)) => {
-            let inviter = snap.inviter_name.as_deref().unwrap_or("Unknown");
-            format!("`{code}` by *{inviter}*")
-        }
+        Some((code, snap)) => match snap.inviter_id.as_deref() {
+            Some(id) => format!("`{code}` by <@{id}>"),
+            None => {
+                let inviter = snap.inviter_name.as_deref().unwrap_or("Unknown");
+                format!("`{code}` by *{inviter}*")
+            }
+        },
         None => "Unknown".to_string(),
     };
     embed = embed.field("Invite", invite_text, true);
@@ -301,6 +460,28 @@ pub async fn on_join(
             .ok();
     }
 
+    Ok(())
+}
+
+// ── Member Update ────────────────────────────────────────────────────────────
+
+async fn on_member_update(
+    state: &AppState,
+    event: &serenity::GuildMemberUpdateEvent,
+) -> Result<()> {
+    let mrepo = MembershipsRepo::new(&state.db);
+    mrepo
+        .update_names(
+            event.guild_id,
+            event.user.id,
+            &event.user.name,
+            event.user.global_name.as_deref(),
+            event.nick.as_deref(),
+        )
+        .await?;
+    mrepo
+        .upsert_usernames_fts_row(event.guild_id, &event.user.id.to_string())
+        .await?;
     Ok(())
 }
 
@@ -388,6 +569,12 @@ pub async fn on_leave(
     guild_id: &GuildId,
     user: &User,
 ) -> Result<()> {
+    // Delay leave processing to give GuildBanAddition time to arrive first,
+    // so we can correctly classify bans vs voluntary leaves.
+    // GuildBanAddition typically arrives ~65ms before GuildMemberRemoval;
+    // 3s gives plenty of margin.
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
     // Determine leave reason: check gateway event (fast) then audit log (detailed)
     let leave_reason = if state.was_recently_banned(*guild_id, user.id, 15) {
         // GuildBanAddition already fired — check audit log for moderator info
@@ -406,6 +593,12 @@ pub async fn on_leave(
 
     let banned = matches!(leave_reason, LeaveReason::Banned { .. });
     let kicked = matches!(leave_reason, LeaveReason::Kicked { .. });
+    let moderator_id = match &leave_reason {
+        LeaveReason::Banned { moderator_id, .. } | LeaveReason::Kicked { moderator_id, .. } => {
+            Some(moderator_id.get().to_string())
+        }
+        LeaveReason::Left => None,
+    };
 
     tracing::trace!(
         guild_id = %guild_id,
@@ -416,7 +609,9 @@ pub async fn on_leave(
     );
 
     let mrepo = MembershipsRepo::new(&state.db);
-    mrepo.record_leave(*guild_id, user.id, banned).await?;
+    mrepo
+        .record_leave(*guild_id, user.id, banned, kicked, moderator_id.as_deref())
+        .await?;
 
     // Fetch history to get join date and stay count
     let history = mrepo.history_for_user(*guild_id, user.id).await?;
@@ -439,11 +634,19 @@ pub async fn on_leave(
         LeaveReason::Left => (0x95a5a6, "left the server", "Member Left"),
     };
 
+    // Use the most recognizable name: server nickname > display name > username
+    let best_name = closed_stay
+        .and_then(|s| s.server_nickname.as_deref())
+        .or_else(|| closed_stay.and_then(|s| s.display_name.as_deref()))
+        .or_else(|| user.global_name.as_deref())
+        .unwrap_or(&user.name);
+
     let mut embed = CreateEmbed::new()
         .color(color)
         .title(title)
-        .description(format!("<@{}> {action}", user.id.get()))
+        .description(format!("**{best_name}** {action}"))
         .thumbnail(user.face())
+        .field("User ID", format!("<@{}>", user.id.get()), true)
         .field("Username", &user.name, true)
         .timestamp(Timestamp::now());
 
@@ -491,7 +694,7 @@ pub async fn on_leave(
                 ch,
                 msg
             );
-            embed = embed.field("Join Embed", format!("[Jump]({link})"), true);
+            embed = embed.field("Previous", format!("[Join Embed]({link})"), true);
         }
     }
 
@@ -515,6 +718,122 @@ pub async fn on_leave(
             )
             .await
             .ok();
+    }
+
+    // Edit the original join embed: replace the broken @mention with the best name
+    if let Some(stay) = closed_stay {
+        if let (Some(ch), Some(msg)) = (&stay.embed_channel_id, &stay.embed_message_id) {
+            if let (Ok(ch_id), Ok(msg_id)) = (ch.parse::<u64>(), msg.parse::<u64>()) {
+                let channel_id = ChannelId::new(ch_id);
+                let message_id = MessageId::new(msg_id);
+
+                // Fetch the original message to preserve existing embeds
+                if let Ok(original) = channel_id.message(http, message_id).await {
+                    if let Some(original_embed) = original.embeds.first() {
+                        // Rebuild the embed with the name instead of the mention
+                        let mut updated = CreateEmbed::new()
+                            .title(original_embed.title.as_deref().unwrap_or("Member joined"))
+                            .color(
+                                original_embed
+                                    .colour
+                                    .unwrap_or(serenity::all::Colour::new(0x2ecc71)),
+                            )
+                            .description(format!("**{best_name}** joined the server"))
+                            .field("User ID", format!("<@{}>", user.id.get()), true);
+
+                        // Preserve existing fields, replacing inviter @mention with name
+                        for field in &original_embed.fields {
+                            let value = if field.name == "Invite" {
+                                // Replace <@inviter_id> with *inviter_name*
+                                if let Some(stay) = closed_stay {
+                                    match (&stay.invite_code, &stay.inviter_id, &stay.inviter_name)
+                                    {
+                                        (Some(code), Some(_), Some(name)) => {
+                                            format!("`{code}` by *{name}*")
+                                        }
+                                        _ => field.value.clone(),
+                                    }
+                                } else {
+                                    field.value.clone()
+                                }
+                            } else {
+                                field.value.clone()
+                            };
+                            updated = updated.field(&field.name, value, field.inline);
+                        }
+
+                        // Preserve thumbnail and timestamp
+                        if let Some(thumb) = &original_embed.thumbnail {
+                            updated = updated.thumbnail(&thumb.url);
+                        }
+                        if let Some(ts) = original_embed.timestamp {
+                            updated = updated.timestamp(ts);
+                        }
+
+                        channel_id
+                            .edit_message(http, message_id, EditMessage::new().embed(updated))
+                            .await
+                            .ok();
+                    }
+                }
+            }
+        }
+    }
+
+    // Edit leave embeds where this user was the moderator (ban/kick actions).
+    // When a mod leaves, their <@id> mentions break — replace with display name.
+    let mod_user_id = user.id.to_string();
+    let mod_embeds = mrepo
+        .embeds_by_moderator(*guild_id, &mod_user_id)
+        .await
+        .unwrap_or_default();
+    if !mod_embeds.is_empty() {
+        let mod_display = user.global_name.as_deref().unwrap_or(&user.name);
+        for (ch, msg) in mod_embeds {
+            if let (Ok(ch_id), Ok(msg_id)) = (ch.parse::<u64>(), msg.parse::<u64>()) {
+                let channel_id = ChannelId::new(ch_id);
+                let message_id = MessageId::new(msg_id);
+                if let Ok(original) = channel_id.message(http, message_id).await {
+                    if let Some(original_embed) = original.embeds.first() {
+                        let mut updated = CreateEmbed::new().color(
+                            original_embed
+                                .colour
+                                .unwrap_or(serenity::all::Colour::new(0xe74c3c)),
+                        );
+                        if let Some(t) = &original_embed.title {
+                            updated = updated.title(t);
+                        }
+                        if let Some(d) = &original_embed.description {
+                            updated = updated.description(d);
+                        }
+                        if let Some(thumb) = &original_embed.thumbnail {
+                            updated = updated.thumbnail(&thumb.url);
+                        }
+                        if let Some(ts) = original_embed.timestamp {
+                            updated = updated.timestamp(ts);
+                        }
+
+                        // Preserve fields, replacing "By" with display name
+                        for field in &original_embed.fields {
+                            let value = if field.name == "By" {
+                                format!("*{mod_display}*")
+                            } else {
+                                field.value.clone()
+                            };
+                            updated = updated.field(&field.name, value, field.inline);
+                        }
+
+                        channel_id
+                            .edit_message(http, message_id, EditMessage::new().embed(updated))
+                            .await
+                            .ok();
+
+                        // Small delay between edits to avoid rate limits
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    }
+                }
+            }
+        }
     }
 
     Ok(())
@@ -543,7 +862,8 @@ fn on_invite_create(state: &AppState, data: &serenity::InviteCreateEvent) {
         snapshot: crate::invites::InviteSnapshot {
             uses: data.uses,
             max_uses: data.max_uses as u64,
-            inviter_name: data.inviter.as_ref().map(|u| u.name.clone()),
+            inviter_id: data.inviter.as_ref().map(|u| u.id.to_string()),
+            inviter_name: data.inviter.as_ref().map(|u| u.display_name().to_string()),
         },
         created_at: Instant::now(),
         deleted_at: None,
