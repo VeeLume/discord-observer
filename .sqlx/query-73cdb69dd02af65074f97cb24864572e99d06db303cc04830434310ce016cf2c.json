@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n        SELECT\n            s.user_id         AS \"user_id!: String\",\n            s.left_at         AS \"left_at!: String\",\n            s.departure_type,\n            m.account_username,\n            m.display_name,\n            m.server_nickname\n        FROM stays s\n        JOIN members m ON m.guild_id = s.guild_id AND m.user_id = s.user_id\n        WHERE s.guild_id = ? AND s.left_at IS NOT NULL\n          AND (? IS NULL OR s.left_at >= ?)\n        ORDER BY s.id DESC\n        LIMIT ?\n        ",
+  "query": "\n        SELECT\n            s.user_id         AS \"user_id!: String\",\n            s.left_at         AS \"left_at!: String\",\n            s.departure_type,\n            m.account_username,\n            m.display_name,\n            m.server_nickname\n        FROM stays s\n        JOIN members m ON m.guild_id = s.guild_id AND m.user_id = s.user_id\n        WHERE s.guild_id = ? AND s.left_at IS NOT NULL\n          AND (? IS NULL OR s.left_at >= ?)\n        ORDER BY s.id DESC\n        ",
   "describe": {
     "columns": [
       {
@@ -35,7 +35,7 @@
       }
     ],
     "parameters": {
-      "Right": 4
+      "Right": 3
     },
     "nullable": [
       false,
@@ -46,5 +46,5 @@
       true
     ]
   },
-  "hash": "516c8c25c56a26523f7664c1c5e8d4b71379ddef29ac74f89aa59f49fee286f1"
+  "hash": "73cdb69dd02af65074f97cb24864572e99d06db303cc04830434310ce016cf2c"
 }

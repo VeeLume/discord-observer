@@ -14,7 +14,7 @@ use crate::invites::InviteSnapshot;
 use crate::services::audit_log::RemovalReason;
 use crate::services::messages::{self, MentionRole, MessageType};
 use crate::services::search;
-use crate::services::stats::{self, StayRow};
+use crate::services::stats;
 
 const SEVEN_DAYS_SECS: i64 = 7 * 24 * 60 * 60;
 
