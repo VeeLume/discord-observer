@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO members (guild_id, user_id, account_username, display_name, server_nickname, first_seen_at, is_present)\n        VALUES (?, ?, ?, ?, ?, ?, 1)\n        ON CONFLICT(guild_id, user_id) DO UPDATE SET\n            account_username = excluded.account_username,\n            display_name     = excluded.display_name,\n            server_nickname  = excluded.server_nickname,\n            is_present       = 1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "d884e5e699c4581c82fc3538a12f3f7022467900b0e6be780982753a5907912b"
+}

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT user_id AS \"user_id: String\" FROM members WHERE guild_id = ? AND is_present = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "558273747bb62d0fe24d539786f553fff08e6937e1284306241f238218887c42"
+}

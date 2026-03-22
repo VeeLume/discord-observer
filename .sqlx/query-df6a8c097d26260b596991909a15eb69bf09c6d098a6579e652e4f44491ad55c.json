@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO stays (guild_id, user_id, joined_at, member_flags)\n        SELECT ?, ?, ?, ?\n        WHERE NOT EXISTS (\n            SELECT 1 FROM stays WHERE guild_id = ? AND user_id = ? AND left_at IS NULL\n        )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "df6a8c097d26260b596991909a15eb69bf09c6d098a6579e652e4f44491ad55c"
+}

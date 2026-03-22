@@ -2,7 +2,7 @@ use anyhow::Result;
 use poise::serenity_prelude as serenity;
 
 use crate::commands::{format_member_label, format_stay_lines, send_chunked_embeds};
-use crate::repos::MembershipsRepo;
+use crate::services::{search, stats};
 use crate::state::Ctx;
 
 /// Autocomplete by nickname/account username; returns `AutocompleteChoice<label, value=user_id>`
@@ -11,8 +11,7 @@ pub async fn ac_member(ctx: Ctx<'_>, partial: &str) -> Vec<serenity::Autocomplet
         return Vec::new();
     };
 
-    let repo = MembershipsRepo::new(&ctx.data().db);
-    let Ok(rows) = repo.search_user_summaries_prefix(gid, partial, 25).await else {
+    let Ok(rows) = search::search_prefix(&ctx.data().db, gid, partial, 25).await else {
         return Vec::new();
     };
 
@@ -65,8 +64,7 @@ pub async fn member_history(
         }
     };
 
-    let repo = MembershipsRepo::new(&ctx.data().db);
-    let rows = repo.history_for_user(guild_id, uid).await?;
+    let rows = stats::history_for_user(&ctx.data().db, guild_id, uid).await?;
 
     // Try to fetch user for avatar (may fail for deleted accounts)
     let user_info = ctx.http().get_user(uid).await.ok();

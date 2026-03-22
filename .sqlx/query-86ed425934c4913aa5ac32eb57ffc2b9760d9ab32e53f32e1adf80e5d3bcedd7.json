@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT first_seen_at AS \"first_seen_at: String\" FROM guilds WHERE guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "first_seen_at: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "86ed425934c4913aa5ac32eb57ffc2b9760d9ab32e53f32e1adf80e5d3bcedd7"
+}

@@ -1,8 +1,7 @@
 use anyhow::Result;
 use poise::serenity_prelude as serenity;
 
-use crate::notices::{self, NoticeContext};
-use crate::repos::{GuildNoticesRepo, GuildSettingsRepo};
+use crate::services::{notices as notices_svc, settings as settings_svc};
 use crate::state::Ctx;
 
 /// Manage bot-wide notices (owner-only).
@@ -16,9 +15,6 @@ pub async fn notice(_: Ctx<'_>) -> Result<()> {
     Ok(())
 }
 
-/// Create a new notice to send to guilds.
-///
-/// Attach a `.md` or `.txt` file whose contents become the embed body.
 #[poise::command(slash_command, owners_only, ephemeral, rename = "create")]
 pub async fn notice_create(
     ctx: Ctx<'_>,
@@ -40,17 +36,14 @@ pub async fn notice_create(
         String::from_utf8(body).map_err(|_| anyhow::anyhow!("Attachment is not valid UTF-8"))?;
 
     let db = &ctx.data().db;
-    let repo = GuildNoticesRepo::new(db);
 
-    // Check for duplicate key
-    if repo.get_notice_by_key(&key).await?.is_some() {
+    if notices_svc::get_notice_by_key(db, &key).await?.is_some() {
         ctx.say(format!("A notice with key `{key}` already exists."))
             .await?;
         return Ok(());
     }
 
-    repo.create_notice(&key, &title, &body, color, current_only)
-        .await?;
+    notices_svc::create_notice(db, &key, &title, &body, color, current_only).await?;
 
     let mode = if current_only {
         "current guilds only"
@@ -64,28 +57,33 @@ pub async fn notice_create(
     Ok(())
 }
 
-/// Send all pending notices to all connected guilds now.
 #[poise::command(slash_command, owners_only, ephemeral, rename = "send")]
 pub async fn notice_send(ctx: Ctx<'_>) -> Result<()> {
     ctx.defer_ephemeral().await?;
 
     let db = &ctx.data().db;
-    let grepo = GuildSettingsRepo::new(db);
     let http = &ctx.serenity_context().http;
 
-    let mut sent = 0u32;
-    let mut skipped = 0u32;
+    let mut sent = 0usize;
+    let mut skipped = 0usize;
 
-    // Iterate all guilds the bot can see
     for guild_ref in ctx.serenity_context().cache.guilds() {
-        grepo.ensure_row(&guild_ref).await.ok();
-        let settings = grepo.get(&guild_ref).await.unwrap_or_default();
-        let notice_ctx = NoticeContext {
+        settings_svc::ensure_settings_row(db, guild_ref).await.ok();
+        settings_svc::ensure_guild(db, guild_ref).await.ok();
+        let gs = settings_svc::get_settings(db, guild_ref)
+            .await
+            .unwrap_or_default();
+        let first_seen_at = settings_svc::get_first_seen_at(db, guild_ref)
+            .await
+            .ok()
+            .flatten();
+        let notice_ctx = notices_svc::NoticeContext {
             guild_id: guild_ref,
-            settings,
+            settings: gs,
+            first_seen_at,
         };
-        match notices::send_pending_notices(http, db, &notice_ctx).await {
-            Ok(()) => sent += 1,
+        match notices_svc::send_pending_notices(http, db, &notice_ctx).await {
+            Ok(n) => sent += n,
             Err(e) => {
                 tracing::warn!(guild_id = %guild_ref, "Failed to send notices: {e}");
                 skipped += 1;
@@ -93,17 +91,15 @@ pub async fn notice_send(ctx: Ctx<'_>) -> Result<()> {
         }
     }
 
-    ctx.say(format!("Processed {sent} guilds ({skipped} failed)."))
+    ctx.say(format!("Sent {sent} notices ({skipped} guilds failed)."))
         .await?;
     Ok(())
 }
 
-/// List all notice definitions.
 #[poise::command(slash_command, owners_only, ephemeral, rename = "list")]
 pub async fn notice_list(ctx: Ctx<'_>) -> Result<()> {
     let db = &ctx.data().db;
-    let repo = GuildNoticesRepo::new(db);
-    let notices = repo.get_all_notices().await?;
+    let notices = notices_svc::get_all_notices(db).await?;
 
     if notices.is_empty() {
         ctx.say("No notices defined.").await?;
@@ -112,7 +108,7 @@ pub async fn notice_list(ctx: Ctx<'_>) -> Result<()> {
 
     let mut lines = Vec::new();
     for n in &notices {
-        let sent_count = repo.count_sent(&n.key).await.unwrap_or(0);
+        let sent_count = notices_svc::count_sent(db, &n.key).await.unwrap_or(0);
         let mode = if n.current_only != 0 {
             "current only"
         } else {
@@ -136,16 +132,14 @@ pub async fn notice_list(ctx: Ctx<'_>) -> Result<()> {
     Ok(())
 }
 
-/// Delete a notice definition.
 #[poise::command(slash_command, owners_only, ephemeral, rename = "delete")]
 pub async fn notice_delete(
     ctx: Ctx<'_>,
     #[description = "Notice key to delete"] key: String,
 ) -> Result<()> {
     let db = &ctx.data().db;
-    let repo = GuildNoticesRepo::new(db);
 
-    if repo.delete_notice(&key).await? {
+    if notices_svc::delete_notice(db, &key).await? {
         ctx.say(format!("Deleted notice `{key}`.")).await?;
     } else {
         ctx.say(format!("No notice found with key `{key}`."))

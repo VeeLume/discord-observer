@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::repos::MembershipRow;
+use crate::services::stats::{DepartureType, StayRow};
 use crate::state::Ctx;
 
 pub mod botstats;
@@ -47,7 +47,7 @@ pub fn format_member_label(
 /// Each stay becomes one line like:
 ///   **Stay #1:** <t:123:R> → <t:456:R> (left) · invite `abc`
 ///   **Stay #2:** <t:789:R> → now
-pub fn format_stay_lines(rows: &[MembershipRow]) -> Vec<String> {
+pub fn format_stay_lines(rows: &[StayRow]) -> Vec<String> {
     rows.iter()
         .enumerate()
         .map(|(i, r)| {
@@ -58,12 +58,10 @@ pub fn format_stay_lines(rows: &[MembershipRow]) -> Vec<String> {
 
             let left = match r.left_at.as_deref() {
                 Some(left_str) => {
-                    let action = if r.banned {
-                        "banned"
-                    } else if r.kicked {
-                        "kicked"
-                    } else {
-                        "left"
+                    let action = match r.departure_type {
+                        Some(DepartureType::Ban) => "banned",
+                        Some(DepartureType::Kick) => "kicked",
+                        _ => "left",
                     };
                     let ts = rfc2822_to_unix(left_str)
                         .map(|ts| format!("<t:{ts}:R>"))

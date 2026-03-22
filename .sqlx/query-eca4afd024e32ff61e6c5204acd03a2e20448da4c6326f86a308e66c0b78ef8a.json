@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT joined_at AS \"joined_at: String\"\n        FROM stays\n        WHERE guild_id = ?\n        ORDER BY id DESC\n        LIMIT ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "joined_at: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "eca4afd024e32ff61e6c5204acd03a2e20448da4c6326f86a308e66c0b78ef8a"
+}

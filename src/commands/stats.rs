@@ -2,7 +2,7 @@ use anyhow::Result;
 use poise::serenity_prelude as serenity;
 
 use crate::commands::{format_member_label, rfc2822_to_unix, send_chunked_embeds};
-use crate::repos::MembershipsRepo;
+use crate::services::{search, stats as stats_svc};
 use crate::state::Ctx;
 
 /// `/stats` parent command. All real work happens in subcommands.
@@ -38,8 +38,7 @@ pub async fn stats_rejoiners(
     let min_rejoins = min_joins.unwrap_or(2).max(2);
     let limit = limit.unwrap_or(15).clamp(1, 100);
 
-    let repo = MembershipsRepo::new(&ctx.data().db);
-    let rows = repo.rejoiners(gid, min_rejoins, limit).await?;
+    let rows = stats_svc::rejoiners(&ctx.data().db, gid, min_rejoins, limit).await?;
 
     let min_rejoins_display = min_rejoins.saturating_sub(1);
 
@@ -57,7 +56,7 @@ pub async fn stats_rejoiners(
             &r.display_name,
             &r.server_nickname,
         );
-        let rejoins = r.rejoin_count.saturating_sub(1);
+        let rejoins = r.stay_count.saturating_sub(1);
         lines.push(format!(
             "• {label} — {rejoins} rejoins ({} exits)",
             r.times_left
@@ -93,7 +92,6 @@ pub async fn stats_rejoiners(
 pub async fn stats_exits(
     ctx: Ctx<'_>,
     #[description = "Look back this many days (default 30)"] days: Option<i64>,
-    #[description = "Max rows shown (default 20)"] show: Option<i64>,
 ) -> Result<()> {
     ctx.defer_ephemeral().await?;
 
@@ -104,18 +102,17 @@ pub async fn stats_exits(
         .expect("guild_only command should always have a guild_id");
 
     let days = days.unwrap_or(30).clamp(1, 365);
-    let show = show.unwrap_or(20).clamp(1, 100);
 
-    let repo = MembershipsRepo::new(&ctx.data().db);
-    let rows = repo.all_exits(gid, 2000).await?;
+    let cutoff_dt: chrono::DateTime<Utc> = Utc::now() - Duration::days(days);
+    let cutoff_rfc = cutoff_dt.to_rfc2822();
+    let cutoff = cutoff_dt.timestamp();
 
-    let cutoff = (Utc::now() - Duration::days(days)).timestamp();
+    let rows = stats_svc::all_exits(&ctx.data().db, gid, Some(&cutoff_rfc)).await?;
 
-    // Parse once, filter, and keep the unix timestamp for display
     struct FilteredExit {
         unix_ts: i64,
         user_id: String,
-        banned: bool,
+        is_ban: bool,
         account_username: Option<String>,
         display_name: Option<String>,
         server_nickname: Option<String>,
@@ -128,7 +125,8 @@ pub async fn stats_exits(
     for r in rows {
         if let Some(ts) = rfc2822_to_unix(&r.left_at) {
             if ts >= cutoff {
-                if r.banned {
+                let is_ban = r.departure_type == Some(crate::services::stats::DepartureType::Ban);
+                if is_ban {
                     banned_count += 1;
                 } else {
                     left_count += 1;
@@ -136,7 +134,7 @@ pub async fn stats_exits(
                 filtered.push(FilteredExit {
                     unix_ts: ts,
                     user_id: r.user_id,
-                    banned: r.banned,
+                    is_ban,
                     account_username: r.account_username,
                     display_name: r.display_name,
                     server_nickname: r.server_nickname,
@@ -151,7 +149,6 @@ pub async fn stats_exits(
         return Ok(());
     }
 
-    // Sort newest first
     filtered.sort_by(|a, b| b.unix_ts.cmp(&a.unix_ts));
 
     let total = left_count + banned_count;
@@ -162,14 +159,14 @@ pub async fn stats_exits(
     ));
     lines.push("".into());
 
-    for r in filtered.iter().take(show as usize) {
+    for r in filtered.iter() {
         let label = format_member_label(
             &r.user_id,
             &r.account_username,
             &r.display_name,
             &r.server_nickname,
         );
-        let kind = if r.banned { "**banned**" } else { "left" };
+        let kind = if r.is_ban { "**banned**" } else { "left" };
         lines.push(format!("• {label} — {kind} — <t:{}:R>", r.unix_ts));
     }
 
@@ -206,8 +203,9 @@ pub async fn stats_current(ctx: Ctx<'_>) -> Result<()> {
         .guild_id()
         .expect("guild_only command should always have a guild_id");
 
-    let repo = MembershipsRepo::new(&ctx.data().db);
-    let s = repo.stats_current(gid).await?;
+    let current_members = search::count_present(&ctx.data().db, gid).await?;
+    let unique_ever = search::count_unique_ever(&ctx.data().db, gid).await?;
+    let s = stats_svc::stats_current(&ctx.data().db, gid, current_members, unique_ever).await?;
 
     let retention = if s.unique_ever > 0 {
         format!(
@@ -235,7 +233,7 @@ pub async fn stats_current(ctx: Ctx<'_>) -> Result<()> {
         .title("Current stats")
         .description("Based on recorded activity only — members who joined or left before the bot was added are not included.")
         .field("Members (of recorded)", retention, true)
-        .field("Total stays", format!("{}", s.total_rejoins), true)
+        .field("Total stays", format!("{}", s.total_stays), true)
         .field("Total exits", format!("{}", s.total_exits), true)
         .field("Banned (of exits)", banned_text, true)
         .field(
@@ -265,12 +263,10 @@ pub async fn stats_member_balance(
 
     let days = days.unwrap_or(30).clamp(1, 365);
 
-    let repo = MembershipsRepo::new(&ctx.data().db);
-    let raw = repo.recent_rejoins_raw(gid, 10_000).await?;
+    let raw = stats_svc::recent_rejoins_raw(&ctx.data().db, gid, 10_000).await?;
 
     let cutoff = Utc::now() - Duration::days(days);
 
-    // Per-day tallies
     struct Tallies {
         total: i64,
         uniq: BTreeSet<String>,
@@ -317,7 +313,6 @@ pub async fn stats_member_balance(
         return Ok(());
     }
 
-    // Window-wide totals (keep unique counts at summary level)
     let (mut j_total, mut j_uniq_all) = (0i64, BTreeSet::<String>::new());
     let (mut l_total, mut l_uniq_all) = (0i64, BTreeSet::<String>::new());
 

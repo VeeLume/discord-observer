@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE stays SET left_at = ?, departure_type = ?\n            WHERE guild_id = ? AND user_id = ? AND left_at IS NULL\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "0ed5517a170d9db4ca1b4cb083a16dd6aad8e5c93cbc22122f0b69e70b55340e"
+}

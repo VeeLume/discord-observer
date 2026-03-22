@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            s.user_id         AS \"user_id!: String\",\n            s.left_at         AS \"left_at!: String\",\n            s.departure_type,\n            m.account_username,\n            m.display_name,\n            m.server_nickname\n        FROM stays s\n        JOIN members m ON m.guild_id = s.guild_id AND m.user_id = s.user_id\n        WHERE s.guild_id = ? AND s.left_at IS NOT NULL\n          AND (? IS NULL OR s.left_at >= ?)\n        ORDER BY s.id DESC\n        LIMIT ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id!: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "left_at!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "departure_type",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_username",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "display_name",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "server_nickname",
+        "ordinal": 5,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "516c8c25c56a26523f7664c1c5e8d4b71379ddef29ac74f89aa59f49fee286f1"
+}

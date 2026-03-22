@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE stays SET invite_code = ?, inviter_id = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "553ee860c0cf2998ca7eb9bfd9f6230c99c1e8f62bb722df53a22da008e0c340"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO usernames_fts (guild_id, user_id, account_username, server_nickname, label, label_norm)\n        SELECT\n            guild_id,\n            user_id,\n            account_username,\n            server_nickname,\n            COALESCE(NULLIF(server_nickname, ''), NULLIF(display_name, ''), account_username, 'User ' || user_id),\n            LOWER(COALESCE(NULLIF(server_nickname, ''), NULLIF(display_name, ''), account_username, user_id))\n        FROM members\n        WHERE guild_id = ?\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "98063d3ac3d1148f375f967079b17df55cc28e17a661547f9243e3a2551f2897"
+}

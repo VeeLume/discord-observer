@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            s.user_id                AS \"user_id: String\",\n            COUNT(*)                 AS \"stay_count: i64\",\n            SUM(CASE WHEN s.left_at IS NOT NULL THEN 1 ELSE 0 END) AS \"times_left: i64\",\n            m.account_username       AS \"account_username: Option<String>\",\n            m.display_name           AS \"display_name: Option<String>\",\n            m.server_nickname        AS \"server_nickname: Option<String>\"\n        FROM stays s\n        JOIN members m ON m.guild_id = s.guild_id AND m.user_id = s.user_id\n        WHERE s.guild_id = ?\n        GROUP BY s.user_id\n        HAVING COUNT(*) >= ?\n        ORDER BY COUNT(*) DESC\n        LIMIT ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "stay_count: i64",
+        "ordinal": 1,
+        "type_info": "Int64"
+      },
+      {
+        "name": "times_left: i64",
+        "ordinal": 2,
+        "type_info": "Int"
+      },
+      {
+        "name": "account_username: Option<String>",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "display_name: Option<String>",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "server_nickname: Option<String>",
+        "ordinal": 5,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "1e7a24c38fcc0bcbfcbf6f25a031b545e9b159b9ee5c63400d9be94b1f986911"
+}

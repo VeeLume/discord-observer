@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO stays (guild_id, user_id, joined_at, invite_code, inviter_id, member_flags)\n        VALUES (?, ?, ?, ?, ?, ?)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "47cadabce675286077c8ddcfb68a1c3305da28179a7dccf813b860ba1b36d18c"
+}

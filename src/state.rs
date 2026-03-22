@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
@@ -26,6 +26,9 @@ pub struct AppState {
 
     /// Recent bans for leave classification
     pub recent_bans: DashMap<GuildId, DashMap<UserId, i64>>,
+
+    /// Guard: ensure the maintenance loop is spawned only once.
+    pub maintenance_started: OnceLock<()>,
 }
 
 impl AppState {
@@ -36,6 +39,7 @@ impl AppState {
             boot: Instant::now(),
             invite_cache: DashMap::new(),
             recent_bans: DashMap::new(),
+            maintenance_started: OnceLock::new(),
         }))
     }
 
@@ -52,13 +56,15 @@ impl AppState {
         let window = Duration::from_secs(5);
 
         // ── Primary: timestamp-based matching on recently deleted invites ──
-        if let Some(cache) = self.invite_cache.get(&guild_id) {
+        // Use get_mut for exclusive shard lock — find + remove is atomic,
+        // preventing concurrent joins from matching the same deleted invite.
+        if let Some(mut cache) = self.invite_cache.get_mut(&guild_id) {
             // Find invites deleted within the window
             let mut candidates: Vec<_> = cache
                 .iter()
                 .filter_map(|(code, tracked)| {
                     tracked.deleted_at.and_then(|del| {
-                        let age = now.duration_since(del);
+                        let age = now.checked_duration_since(del)?;
                         if age <= window {
                             Some((code.clone(), tracked.snapshot.clone(), age))
                         } else {
@@ -90,6 +96,8 @@ impl AppState {
                     total_candidates = count,
                     "Primary match: recently deleted invite"
                 );
+                // Consume matched invite so concurrent joins can't re-match it
+                cache.remove(&code);
                 return Some((code, snap));
             }
         }
@@ -156,7 +164,9 @@ impl AppState {
         for mut guild_cache in self.invite_cache.iter_mut() {
             guild_cache.value_mut().retain(|_code, tracked| {
                 match tracked.deleted_at {
-                    Some(del) => now.duration_since(del) < max_age,
+                    Some(del) => now
+                        .checked_duration_since(del)
+                        .is_none_or(|age| age < max_age),
                     None => true, // keep active invites
                 }
             });

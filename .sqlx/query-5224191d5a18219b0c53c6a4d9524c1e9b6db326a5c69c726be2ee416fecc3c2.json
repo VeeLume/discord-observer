@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE stays SET departure_type = ?, moderator_id = ?\n        WHERE guild_id = ? AND user_id = ?\n          AND id = (SELECT MAX(id) FROM stays WHERE guild_id = ? AND user_id = ?)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "5224191d5a18219b0c53c6a4d9524c1e9b6db326a5c69c726be2ee416fecc3c2"
+}

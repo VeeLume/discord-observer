@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) AS \"cnt!: i64\" FROM stays WHERE guild_id = ? AND departure_type = 'ban'",
+  "describe": {
+    "columns": [
+      {
+        "name": "cnt!: i64",
+        "ordinal": 0,
+        "type_info": "Int"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "e809e23498d813b085437239b2862ddd7114e6a0709edd01b1feee8f6a7b9af7"
+}

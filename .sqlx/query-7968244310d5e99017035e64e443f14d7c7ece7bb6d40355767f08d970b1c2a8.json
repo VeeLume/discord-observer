@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE members SET is_present = 0 WHERE guild_id = ? AND user_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "7968244310d5e99017035e64e443f14d7c7ece7bb6d40355767f08d970b1c2a8"
+}

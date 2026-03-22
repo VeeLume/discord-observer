@@ -2,7 +2,7 @@ use anyhow::Result;
 use poise::serenity_prelude as serenity;
 
 use crate::commands::{format_stay_lines, send_chunked_embeds};
-use crate::repos::MembershipsRepo;
+use crate::services::stats;
 use crate::state::Ctx;
 
 /// Slash + context menu for user info / history.
@@ -29,8 +29,7 @@ pub async fn userinfo(
         }
     };
 
-    let mrepo = MembershipsRepo::new(&ctx.data().db);
-    let rows = mrepo.history_for_user(guild_id, user.id).await?;
+    let rows = stats::history_for_user(&ctx.data().db, guild_id, user.id).await?;
 
     let title = format!("History for {}", user.tag());
     let thumb_url = user.face();

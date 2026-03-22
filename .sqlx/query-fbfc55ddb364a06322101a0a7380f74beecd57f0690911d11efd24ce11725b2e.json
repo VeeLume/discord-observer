@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE members\n        SET account_username = ?, display_name = ?, server_nickname = ?\n        WHERE guild_id = ? AND user_id = ?\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "fbfc55ddb364a06322101a0a7380f74beecd57f0690911d11efd24ce11725b2e"
+}

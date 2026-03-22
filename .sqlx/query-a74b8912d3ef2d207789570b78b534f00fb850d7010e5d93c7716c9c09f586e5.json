@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO name_changes (guild_id, user_id, changed_at, account_username, display_name, server_nickname)\n        VALUES (?, ?, ?, ?, ?, ?)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "a74b8912d3ef2d207789570b78b534f00fb850d7010e5d93c7716c9c09f586e5"
+}

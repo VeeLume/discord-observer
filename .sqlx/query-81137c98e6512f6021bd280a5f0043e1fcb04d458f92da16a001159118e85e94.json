@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) AS \"cnt!: i64\" FROM stays WHERE guild_id = ? AND left_at IS NOT NULL",
+  "describe": {
+    "columns": [
+      {
+        "name": "cnt!: i64",
+        "ordinal": 0,
+        "type_info": "Int"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "81137c98e6512f6021bd280a5f0043e1fcb04d458f92da16a001159118e85e94"
+}

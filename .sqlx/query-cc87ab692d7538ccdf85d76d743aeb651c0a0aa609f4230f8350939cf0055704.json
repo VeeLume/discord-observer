@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT DISTINCT\n            bm.id AS \"id!: i64\",\n            bm.channel_id AS \"channel_id!: String\",\n            bm.message_id AS \"message_id!: String\",\n            bm.message_type AS \"message_type!: String\",\n            bm.stay_id,\n            bm.previous_message_id\n        FROM bot_messages bm\n        JOIN bot_message_mentions bmm ON bmm.bot_message_id = bm.id\n        WHERE bm.guild_id = ? AND bmm.user_id = ?\n        ORDER BY bm.id DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Int64"
+      },
+      {
+        "name": "channel_id!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "message_id!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "message_type!: String",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "stay_id",
+        "ordinal": 4,
+        "type_info": "Int64"
+      },
+      {
+        "name": "previous_message_id",
+        "ordinal": 5,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "cc87ab692d7538ccdf85d76d743aeb651c0a0aa609f4230f8350939cf0055704"
+}

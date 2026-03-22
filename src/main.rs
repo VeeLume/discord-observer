@@ -3,9 +3,8 @@ mod commands;
 mod db;
 mod events;
 mod invites;
-mod notices;
 mod permissions;
-mod repos;
+mod services;
 mod state;
 
 // Avoid musl's default allocator due to lackluster performance

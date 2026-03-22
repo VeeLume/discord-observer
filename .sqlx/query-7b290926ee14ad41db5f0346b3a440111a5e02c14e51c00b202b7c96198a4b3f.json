@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT is_present AS \"is_present: bool\" FROM members WHERE guild_id = ? AND user_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "is_present: bool",
+        "ordinal": 0,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7b290926ee14ad41db5f0346b3a440111a5e02c14e51c00b202b7c96198a4b3f"
+}

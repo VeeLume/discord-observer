@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO bot_message_mentions (bot_message_id, user_id, mention_role)\n            VALUES (?, ?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "56a463aa91df843d8703a508ddb9014f595183585f717ab230fe39a0bcc42c7d"
+}

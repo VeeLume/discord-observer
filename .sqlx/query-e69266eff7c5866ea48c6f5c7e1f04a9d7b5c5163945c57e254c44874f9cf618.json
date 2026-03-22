@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            user_id        AS \"user_id: String\",\n            joined_at      AS \"joined_at: String\",\n            left_at        AS \"left_at: Option<String>\",\n            departure_type AS \"departure_type: Option<String>\"\n        FROM stays\n        WHERE guild_id = ?\n        ORDER BY id DESC\n        LIMIT ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "joined_at: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "left_at: Option<String>",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "departure_type: Option<String>",
+        "ordinal": 3,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "e69266eff7c5866ea48c6f5c7e1f04a9d7b5c5163945c57e254c44874f9cf618"
+}

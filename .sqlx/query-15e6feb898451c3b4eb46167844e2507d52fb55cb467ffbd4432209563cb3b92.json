@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT bm.id AS \"id!: i64\", bm.channel_id AS \"channel_id!: String\",\n               bm.message_id AS \"message_id!: String\", bm.message_type AS \"message_type!: String\",\n               bm.stay_id, bm.previous_message_id\n        FROM bot_messages bm\n        JOIN bot_message_mentions bmm ON bmm.bot_message_id = bm.id\n        WHERE bm.guild_id = ? AND bmm.user_id = ? AND bmm.mention_role = 'member'\n          AND bm.message_type IN ('leave', 'kick', 'ban')\n        ORDER BY bm.id DESC\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Int64"
+      },
+      {
+        "name": "channel_id!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "message_id!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "message_type!: String",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "stay_id",
+        "ordinal": 4,
+        "type_info": "Int64"
+      },
+      {
+        "name": "previous_message_id",
+        "ordinal": 5,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "15e6feb898451c3b4eb46167844e2507d52fb55cb467ffbd4432209563cb3b92"
+}

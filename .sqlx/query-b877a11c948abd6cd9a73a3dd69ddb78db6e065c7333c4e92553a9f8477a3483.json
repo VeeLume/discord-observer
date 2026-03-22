@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT account_username, display_name, server_nickname\n        FROM members\n        WHERE guild_id = ? AND user_id = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "account_username",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "display_name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "server_nickname",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "b877a11c948abd6cd9a73a3dd69ddb78db6e065c7333c4e92553a9f8477a3483"
+}

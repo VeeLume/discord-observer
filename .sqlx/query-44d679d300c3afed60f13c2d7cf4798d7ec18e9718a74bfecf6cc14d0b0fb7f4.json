@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE stays\n        SET departure_type = 'ban', left_at = COALESCE(left_at, ?)\n        WHERE guild_id = ? AND user_id = ?\n          AND id = (SELECT MAX(id) FROM stays WHERE guild_id = ? AND user_id = ?)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "44d679d300c3afed60f13c2d7cf4798d7ec18e9718a74bfecf6cc14d0b0fb7f4"
+}
