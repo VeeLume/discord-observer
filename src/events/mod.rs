@@ -30,6 +30,15 @@ pub async fn event_handler(
     match event {
         Ready { data_about_bot, .. } => sync::handle_ready(ctx, state, data_about_bot).await?,
 
+        GuildCreate { guild, is_new } => {
+            // Only act on freshly added guilds. The same event also fires for already-known
+            // guilds during gateway lazy-load and on resume — those are handled by Ready.
+            if *is_new == Some(true) {
+                tracing::info!(t, guild_id = %guild.id, "Joined new guild: {}", guild.name);
+                sync::setup_guild(ctx, state, guild.id).await;
+            }
+        }
+
         GuildMemberAddition { new_member } => {
             tracing::trace!(
                 t,

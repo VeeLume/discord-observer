@@ -21,51 +21,7 @@ pub async fn handle_ready(
 
     for guild in &ready.guilds {
         tracing::info!("Connected to guild: {}", guild.id);
-
-        // Ensure guild + settings rows exist
-        settings::ensure_guild(&state.db, guild.id).await.ok();
-        settings::ensure_settings_row(&state.db, guild.id)
-            .await
-            .ok();
-
-        // Sync members: update names, close stale stays
-        if let Err(e) = sync_members(ctx, state, guild.id).await {
-            tracing::warn!("Failed to sync members for guild {}: {}", guild.id, e);
-        }
-
-        // Rebuild FTS after sync
-        search::rebuild_fts(&state.db, guild.id)
-            .await
-            .map_err(|e| tracing::warn!("Failed to rebuild FTS for guild {}: {}", guild.id, e))
-            .ok();
-
-        // Populate invite cache
-        match invites::fetch_invites_map(&ctx.http, guild.id).await {
-            Ok(map) => {
-                tracing::trace!(guild_id = %guild.id, count = map.len(), "Cached invites on startup");
-                state.invite_cache.insert(guild.id, map);
-            }
-            Err(e) => {
-                tracing::warn!("Failed to cache invites for {}: {}", guild.id, e);
-            }
-        }
-
-        // Send pending one-time notices
-        let gs = settings::get_settings(&state.db, guild.id)
-            .await
-            .unwrap_or_default();
-        let first_seen_at = settings::get_first_seen_at(&state.db, guild.id)
-            .await
-            .ok()
-            .flatten();
-        let notice_ctx = notices::NoticeContext {
-            guild_id: guild.id,
-            settings: gs,
-            first_seen_at,
-        };
-        if let Err(e) = notices::send_pending_notices(&ctx.http, &state.db, &notice_ctx).await {
-            tracing::warn!("Failed to send notices for guild {}: {}", guild.id, e);
-        }
+        setup_guild(ctx, state, guild.id).await;
     }
 
     // Maintenance loop: prune old bans and deleted invites (spawn once only)
@@ -82,6 +38,50 @@ pub async fn handle_ready(
     }
 
     Ok(())
+}
+
+/// Per-guild bring-up: ensure DB rows, sync members, cache invites, send notices.
+/// Called from both `Ready` (existing guilds at startup) and `GuildCreate` (newly joined).
+pub async fn setup_guild(ctx: &Context, state: &Arc<AppState>, guild_id: GuildId) {
+    settings::ensure_guild(&state.db, guild_id).await.ok();
+    settings::ensure_settings_row(&state.db, guild_id)
+        .await
+        .ok();
+
+    if let Err(e) = sync_members(ctx, state, guild_id).await {
+        tracing::warn!("Failed to sync members for guild {}: {}", guild_id, e);
+    }
+
+    search::rebuild_fts(&state.db, guild_id)
+        .await
+        .map_err(|e| tracing::warn!("Failed to rebuild FTS for guild {}: {}", guild_id, e))
+        .ok();
+
+    match invites::fetch_invites_map(&ctx.http, guild_id).await {
+        Ok(map) => {
+            tracing::trace!(guild_id = %guild_id, count = map.len(), "Cached invites");
+            state.invite_cache.insert(guild_id, map);
+        }
+        Err(e) => {
+            tracing::warn!("Failed to cache invites for {}: {}", guild_id, e);
+        }
+    }
+
+    let gs = settings::get_settings(&state.db, guild_id)
+        .await
+        .unwrap_or_default();
+    let first_seen_at = settings::get_first_seen_at(&state.db, guild_id)
+        .await
+        .ok()
+        .flatten();
+    let notice_ctx = notices::NoticeContext {
+        guild_id,
+        settings: gs,
+        first_seen_at,
+    };
+    if let Err(e) = notices::send_pending_notices(&ctx.http, &state.db, &notice_ctx).await {
+        tracing::warn!("Failed to send notices for guild {}: {}", guild_id, e);
+    }
 }
 
 /// Reconcile DB state with reality after the bot was offline.

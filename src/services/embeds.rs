@@ -36,7 +36,10 @@ pub async fn post_embed(
         .await
     {
         Ok(msg) => Some((ch, msg.id)),
-        Err(_) => None,
+        Err(e) => {
+            tracing::warn!(channel_id = %ch, "Failed to send embed: {e}");
+            None
+        }
     }
 }
 
