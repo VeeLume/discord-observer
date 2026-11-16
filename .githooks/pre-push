@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BUNDLE="${PLUGIN_BUNDLE:-icu.veelume.starcitizen.sdPlugin}"
-
 echo "▶ cargo fmt --check"
 cargo fmt --all -- --check
 
@@ -11,5 +9,10 @@ cargo clippy --all-targets --all-features
 
 echo "▶ cargo check"
 cargo check --all-targets --all-features
+
+# The Docker build compiles with SQLX_OFFLINE=true, so a stale .sqlx/ cache
+# breaks the image build on the VPS. Fail the push instead.
+echo "▶ cargo sqlx prepare --check"
+cargo sqlx prepare --check
 
 echo "✓ pre-push checks passed"

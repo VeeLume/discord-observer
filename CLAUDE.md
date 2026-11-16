@@ -161,7 +161,7 @@ Always include the `t` (milliseconds since boot) field for timing analysis.
 ## Conventions
 
 - **Commits:** [Conventional Commits](https://www.conventionalcommits.org/) enforced by `.githooks/commit-msg`.
-- **Hooks:** `.githooks/pre-commit` and `pre-push` run `cargo fmt --check`, `cargo clippy`, and **`cargo sqlx prepare`**. The Docker build uses the offline cache in `.sqlx/`, so the cache must be committed alongside any change to a `query!`/`query_as!` macro — otherwise the image build fails on CI / on the VPS.
+- **Hooks:** `.githooks/pre-commit` runs `cargo fmt` and **`cargo sqlx prepare`**, then `git add -A` (so it stages *everything* in the working tree — stash unrelated changes before committing). `.githooks/pre-push` runs `cargo fmt --check`, `cargo clippy`, `cargo check`, and **`cargo sqlx prepare --check`**. The Docker build uses the offline cache in `.sqlx/`, so the cache must be committed alongside any change to a `query!`/`query_as!` macro — otherwise the image build fails on the VPS.
 - **Errors:** `anyhow::Result` throughout.
 - **Logging:** `tracing` macros (`info!`, `warn!`, `trace!`). Use `trace!` for event timing, `info!` for startup, `warn!` for recoverable errors.
 - **Concurrent state:** `DashMap` for multi-key concurrent access.
@@ -185,3 +185,15 @@ RUST_LOG=observer=trace cargo run  # Run with trace logging
 | `DISCORD_TOKEN` | Yes | Bot token from Discord Developer Portal |
 | `DATABASE_URL` | No | SQLite URL (default: `sqlite://bot.db`) |
 | `RUST_LOG` | No | Log level filter (e.g. `observer=trace`) |
+
+## Deployment
+
+Production runs on the VPS and is declared in the separate infra repo (`D:/infra`, stack `discord-observer`), not by this repo's `docker-compose.yml` (that one is a standalone example). The VPS checks out `main` of this repo and builds the image from its `Dockerfile`; state is the named volume `discord-observer_bot_data`.
+
+```sh
+# from D:/infra
+just deploy discord-observer   # pulls main on the VPS, rebuilds, up -d
+just logs discord-observer
+```
+
+Push to `main` first — the VPS builds from GitHub, not from your working tree. After changing a command's permissions or signature, run `@bot register` in Discord so the registered commands pick it up.
