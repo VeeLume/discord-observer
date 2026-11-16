@@ -5,6 +5,7 @@ use serenity::all::GuildId;
 use sqlx::FromRow;
 
 use crate::db::Db;
+use crate::markdown::escape_markdown;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -171,7 +172,7 @@ pub async fn best_user_ref(db: &Db, guild_id: GuildId, user_id: &str) -> String 
     }
 
     match best_display_name(db, guild_id, user_id).await {
-        Some(name) => format!("*{name}*"),
+        Some(name) => format!("*{}*", escape_markdown(&name)),
         None => user_id.to_string(),
     }
 }

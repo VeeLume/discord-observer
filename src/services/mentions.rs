@@ -10,6 +10,7 @@ use serenity::all::{ChannelId, CreateEmbed, EditMessage, Embed, MessageId};
 use serenity::http::Http;
 
 use crate::db::Db;
+use crate::markdown::escape_markdown;
 use crate::services::messages::{self, MessageType};
 
 /// Edit all embeds that reference a departing user.
@@ -51,7 +52,7 @@ async fn edit_departed_mentions_inner(
     let referencing = messages::find_referencing_user(db, guild_id, user_id).await?;
 
     let pattern = format!("<@{user_id}>");
-    let replacement = format!("*{display_name}*");
+    let replacement = format!("*{}*", escape_markdown(display_name));
 
     for (i, embed_ref) in referencing.iter().enumerate() {
         let Ok(ch_id) = embed_ref.channel_id.parse::<u64>() else {

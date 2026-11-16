@@ -11,6 +11,7 @@ use crate::state::Ctx;
     guild_only,
     ephemeral,
     default_member_permissions = "MANAGE_GUILD",
+    required_permissions = "MANAGE_GUILD",
     subcommands(
         "settings_join_log",
         "settings_leave_log",

@@ -2,6 +2,7 @@ use anyhow::Result;
 use poise::serenity_prelude as serenity;
 
 use crate::commands::{format_member_label, rfc2822_to_unix, send_chunked_embeds};
+use crate::markdown::escape_markdown;
 use crate::services::{search, stats as stats_svc};
 use crate::state::Ctx;
 
@@ -10,6 +11,8 @@ use crate::state::Ctx;
     slash_command,
     guild_only,
     ephemeral,
+    default_member_permissions = "KICK_MEMBERS",
+    required_permissions = "KICK_MEMBERS",
     subcommands(
         "stats_current",
         "stats_rejoiners",
@@ -50,12 +53,12 @@ pub async fn stats_rejoiners(
 
     let mut lines = Vec::with_capacity(rows.len());
     for r in rows {
-        let label = format_member_label(
+        let label = escape_markdown(&format_member_label(
             &r.user_id,
             &r.account_username,
             &r.display_name,
             &r.server_nickname,
-        );
+        ));
         let rejoins = r.stay_count.saturating_sub(1);
         lines.push(format!(
             "• {label} — {rejoins} rejoins ({} exits)",
@@ -160,12 +163,12 @@ pub async fn stats_exits(
     lines.push("".into());
 
     for r in filtered.iter() {
-        let label = format_member_label(
+        let label = escape_markdown(&format_member_label(
             &r.user_id,
             &r.account_username,
             &r.display_name,
             &r.server_nickname,
-        );
+        ));
         let kind = if r.is_ban { "**banned**" } else { "left" };
         lines.push(format!("• {label} — {kind} — <t:{}:R>", r.unix_ts));
     }

@@ -3,6 +3,7 @@ mod commands;
 mod db;
 mod events;
 mod invites;
+mod markdown;
 mod permissions;
 mod services;
 mod state;

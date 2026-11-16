@@ -11,6 +11,21 @@ pub async fn ac_member(ctx: Ctx<'_>, partial: &str) -> Vec<serenity::Autocomplet
         return Vec::new();
     };
 
+    // poise doesn't run `required_permissions` checks for autocomplete callbacks,
+    // so gate here too: the list includes departed members' names.
+    let allowed = match ctx {
+        poise::Context::Application(actx) => actx
+            .interaction
+            .member
+            .as_ref()
+            .and_then(|m| m.permissions)
+            .is_some_and(|p| p.kick_members() || p.administrator()),
+        poise::Context::Prefix(_) => false,
+    };
+    if !allowed {
+        return Vec::new();
+    }
+
     let Ok(rows) = search::search_prefix(&ctx.data().db, gid, partial, 25).await else {
         return Vec::new();
     };
@@ -33,6 +48,8 @@ pub async fn ac_member(ctx: Ctx<'_>, partial: &str) -> Vec<serenity::Autocomplet
     slash_command,
     guild_only,
     ephemeral,
+    default_member_permissions = "KICK_MEMBERS",
+    required_permissions = "KICK_MEMBERS",
     subcommands("member_history"),
     rename = "member"
 )]

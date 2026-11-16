@@ -13,7 +13,9 @@ use crate::state::Ctx;
     slash_command,
     context_menu_command = "User information",
     guild_only,
-    ephemeral
+    ephemeral,
+    default_member_permissions = "KICK_MEMBERS",
+    required_permissions = "KICK_MEMBERS"
 )]
 pub async fn userinfo(
     ctx: Ctx<'_>,

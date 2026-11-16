@@ -11,6 +11,7 @@ use serenity::http::Http;
 
 use crate::db::Db;
 use crate::invites::InviteSnapshot;
+use crate::markdown::escape_markdown;
 use crate::services::audit_log::RemovalReason;
 use crate::services::messages::{self, MentionRole, MessageType};
 use crate::services::search;
@@ -107,7 +108,7 @@ pub async fn post_join(
         .title("Member joined")
         .description(format!("<@{}> joined the server", user_id.get()))
         .thumbnail(member.user.face())
-        .field("Username", &member.user.name, true)
+        .field("Username", escape_markdown(&member.user.name), true)
         .field("Account Created", format!("<t:{created_unix}:R>"), true)
         .field("Invite", invite_text, true)
         .timestamp(Timestamp::now());
@@ -207,9 +208,13 @@ pub async fn post_leave(
     let mut embed = CreateEmbed::new()
         .color(color)
         .title(title)
-        .description(format!("**{best_name}** (<@{}>) {action}", user.id.get()))
+        .description(format!(
+            "**{}** (<@{}>) {action}",
+            escape_markdown(&best_name),
+            user.id.get()
+        ))
         .thumbnail(user.face())
-        .field("Username", &user.name, true)
+        .field("Username", escape_markdown(&user.name), true)
         .field("Account Created", format!("<t:{created_unix}:R>"), true)
         .timestamp(Timestamp::now());
 
