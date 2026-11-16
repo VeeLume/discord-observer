@@ -16,27 +16,31 @@ This file provides guidance to Claude Code (claude.ai/code) and other coding age
 Discord Gateway Events
         │
         ▼
-   events.rs          ← Event dispatch (join, leave, ban, invite create/delete)
+   events/             ← Per-event handlers (join, leave, invites, member_update, sync)
+                         dispatched from events/mod.rs::event_handler
         │
         ▼
-   state.rs           ← AppState: invite cache (DashMap), ban tracking, detection logic
+   state.rs            ← AppState: invite cache (DashMap), recent_bans, OnceLock guard
         │
         ▼
-   repos/             ← Repository pattern: SQL queries isolated from business logic
+   services/           ← Domain services: SQL + business logic, grouped by concern
+                         (membership writes are transactional; reads live in stats/search)
         │
         ▼
-   SQLite (sqlx)      ← Migrations in migrations/, runtime queries
+   SQLite (sqlx)       ← Migrations in migrations/, compile-time checked queries
 ```
 
 ### Key Files
 
 | File | Role |
 |------|------|
-| `src/app.rs` | Framework setup, intents, prefix config. No command registration on startup — uses `@bot register` prefix command instead. |
-| `src/events.rs` | All gateway event handlers. Uses `ms_since(boot)` timestamps for timing analysis. |
-| `src/state.rs` | `AppState` struct: DB handle, `boot` instant, `invite_cache` (DashMap of TrackedInvite), `recent_bans`. Detection logic lives here. |
+| `src/app.rs` | Framework setup, intents (`GUILD_MEMBERS` + non_privileged), prefix config. No command registration on startup — uses `@bot register` prefix command instead. |
+| `src/events/mod.rs` | `event_handler` — the single `match event` block that dispatches to per-event modules. Adds `t = ms_since(boot)` to every `tracing` call. |
+| `src/events/{join,leave,invites,member_update,sync}.rs` | One file per event group. `leave.rs` spawns a background enrichment task that delays 3s, checks audit log, then writes departure type + posts the embed. |
+| `src/state.rs` | `AppState` struct: `db`, `boot` instant, `invite_cache` (DashMap), `recent_bans`, `maintenance_started: OnceLock<()>`. **No SQL here** — only in-memory caches and the detection helpers that consult them. |
 | `src/invites.rs` | `InviteSnapshot` (uses, max_uses, inviter) and `TrackedInvite` (adds created_at, deleted_at lifecycle timestamps). |
-| `src/notices.rs` | DB-driven notice system. Reads notice definitions from the `notices` table, respects `current_only` flag and `first_seen_at` per guild. Gated on `notices_enabled` guild setting. |
+| `src/db/mod.rs` | `Db` wrapper around `SqlitePool`. Runs migrations on connect. |
+| `src/permissions.rs` | Per-command permission gating helpers. |
 
 ### Invite Detection
 
@@ -47,6 +51,8 @@ Two-phase detection in `AppState::detect_invite_used()`:
 2. **Fallback (API comparison):** For unlimited invites (`max_uses=0`) that don't fire `InviteDelete` when used, fetches fresh invites from the Discord API and compares use counts against the cached values.
 
 The invite cache (`DashMap<GuildId, HashMap<String, TrackedInvite>>`) is populated on startup via API fetch, updated by `InviteCreate`/`InviteDelete` gateway events, and pruned every 60 seconds (deleted entries older than 60s).
+
+**Race-condition fix:** `detect_invite_used()` takes an exclusive shard lock via `DashMap::get_mut()` and removes the matched invite atomically. Two concurrent joins can no longer double-match the same just-deleted invite. Use `Instant::checked_duration_since()` for the timestamp window comparison — saturating arithmetic on `Instant` is not safe across reboots-of-monotonic-clock scenarios.
 
 ### Ban & Kick Detection
 
@@ -77,21 +83,36 @@ SQLite via sqlx with compile-time checked queries (`sqlx::query!`, `sqlx::query_
 
 sqlx tracks migrations in `_sqlx_migrations` with SHA-384 checksums — manual schema changes cause checksum mismatches or "duplicate column" errors on next run.
 
-### Tables
+### Tables (post-`0011_schema_v2`)
 
-- `memberships` — Join/leave/ban history per user per guild
-- `guild_settings` — Per-guild log channel IDs, notices_enabled flag
-- `guild_notices` — Tracks which one-time notices have been sent
-- `usernames_fts` — FTS5 virtual table for fast member name search
+The old monolithic `memberships` table was normalized in migration `0011_schema_v2.sql` (commit `b4c11f7`, 2026-05-01) into:
 
-### Repository Pattern
+- `members` — Identity per (guild, user): account_username, display_name, server_nickname, `is_present` flag, `first_seen_at`.
+- `stays` — One row per join→leave lifecycle. Holds `departure_type` (enum: `ban` / `kick` / `leave`), `moderator_id`, `reason`, `invite_code`, `inviter_id`, `member_flags`.
+- `name_changes` — Append-only log of name changes for the three name fields. Mirrors observer-side history that `View user`-style commands display.
+- `guilds` — Per-guild lifecycle (`first_seen_at`). Decoupled from `guild_settings` so a guild row exists even before settings are configured.
+- `guild_settings` — Per-guild log channel IDs, `notices_enabled` flag.
+- `guild_notices` — Tracks which one-time notices have been sent per guild.
+- `bot_message_mentions` — Junction table mapping bot embed messages → user IDs they reference, for cross-link edits when a user is later actioned.
+- `usernames_fts` — FTS5 virtual table for fast member name search.
 
-SQL is isolated in `src/repos/`:
-- `MembershipsRepo` — join/leave/ban records, history queries, stats
-- `GuildSettingsRepo` — channel config, notices toggle
-- `GuildNoticesRepo` — notice send tracking
+The `banned`/`kicked` boolean columns on the old `memberships` table no longer exist — use `stays.departure_type` instead.
 
-Repos take `&Db` and are created per-call: `let repo = MembershipsRepo::new(&state.db);`
+### Services Pattern (replaces the old `src/repos/`)
+
+SQL + business logic live in `src/services/`, grouped by concern rather than by table:
+
+- `membership` — **Transactional writes** for join / leave / name-change. Wraps coupled writes across `members` + `stays` + `name_changes` + FTS in a single transaction so we never end up with half-updated state.
+- `stats` — Read-side history queries, retention stats, `DepartureType` enum.
+- `search` — FTS5-backed name search.
+- `settings` — `GuildSettings` struct, per-guild log-channel config, notices toggle. Includes an `ALLOWED_SETTING_COLUMNS` allowlist used by the dynamic-column update helper (SQL-injection guard for the column-name interpolation).
+- `notices` — DB-driven notice system. Reads notice definitions from the `notices` table, respects `current_only` flag and `first_seen_at` per guild. Gated on `notices_enabled` guild setting.
+- `audit_log` — Audit-log query helpers (moderator + reason lookup for kicks/bans).
+- `embeds` — Embed construction for join/leave/ban/kick log messages.
+- `messages` — Bot-message persistence (which embed went where, used by `mentions` for cross-link edits).
+- `mentions` — Reads `bot_message_mentions` to find prior embeds that mentioned a user, and edits them in place when that user is later actioned.
+
+Services are free functions taking `&Db` (no repo structs): `services::membership::record_join(&state.db, …)`.
 
 ## Commands
 
@@ -114,14 +135,17 @@ The `@bot register` prefix command (owner-only) uses `poise::builtins::register_
 
 ## Adding a New Setting
 
-1. **Migration:** Create `migrations/N_description.sql` with `ALTER TABLE guild_settings ADD COLUMN ...`
-2. **Repo:** Update `GuildSettings` struct and `get()` query in `guild_settings_repo.rs`
-3. **Command:** Add a subcommand to `/settings` in `settings.rs`
-4. **Display:** Update `settings_show` to include the new setting
+1. **Migration:** `sqlx migrate add <name>` → `ALTER TABLE guild_settings ADD COLUMN ...` in the new file.
+2. **Service:** Update the `GuildSettings` struct and `get()` query in `src/services/settings.rs`. If the setting is updatable via the dynamic-column helper, add the column name to `ALLOWED_SETTING_COLUMNS`.
+3. **Command:** Add a subcommand to `/settings` in `src/commands/settings.rs`.
+4. **Display:** Update `settings_show` to include the new setting.
+5. **Offline cache:** `cargo sqlx prepare` so the pre-commit/pre-push hooks pass.
 
 ## Adding a New Event Handler
 
-In `src/events.rs`, add a new arm to the `match event` block:
+Two cases:
+
+**New gateway event type** — add an arm to the `match event` block in `src/events/mod.rs::event_handler`:
 
 ```rust
 SomeEvent { data } => {
@@ -132,14 +156,17 @@ SomeEvent { data } => {
 
 Always include the `t` (milliseconds since boot) field for timing analysis.
 
+**Net-new event group** (rare) — create `src/events/<group>.rs`, declare it in `src/events/mod.rs`, and route to it from the dispatcher. Background work belongs in `tokio::spawn`'d enrichment tasks like `leave.rs::enrich_leave`, not in the synchronous event-handler path — Discord drops events that take too long to ack.
+
 ## Conventions
 
-- **Commits:** [Conventional Commits](https://www.conventionalcommits.org/) enforced by `.githooks/commit-msg`
-- **Errors:** `anyhow::Result` throughout
+- **Commits:** [Conventional Commits](https://www.conventionalcommits.org/) enforced by `.githooks/commit-msg`.
+- **Hooks:** `.githooks/pre-commit` and `pre-push` run `cargo fmt --check`, `cargo clippy`, and **`cargo sqlx prepare`**. The Docker build uses the offline cache in `.sqlx/`, so the cache must be committed alongside any change to a `query!`/`query_as!` macro — otherwise the image build fails on CI / on the VPS.
+- **Errors:** `anyhow::Result` throughout.
 - **Logging:** `tracing` macros (`info!`, `warn!`, `trace!`). Use `trace!` for event timing, `info!` for startup, `warn!` for recoverable errors.
-- **Concurrent state:** `DashMap` for multi-key concurrent access
-- **Formatting:** `cargo fmt --all`
-- **Linting:** `cargo clippy --all-targets`
+- **Concurrent state:** `DashMap` for multi-key concurrent access.
+- **Formatting:** `cargo fmt --all`.
+- **Linting:** `cargo clippy --all-targets`.
 
 ## Development Commands
 
